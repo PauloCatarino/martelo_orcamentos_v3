@@ -25,6 +25,10 @@ Option Explicit
 '    - o desenho mostra a peça selecionada no quadro 2 (antes era só a 1.ª);
 '    - sem o campo «Quantas de cada» (cada peça entra 1 vez; +1 para repetir) e sem o
 '      botão «Tirar o código destas peças».
+'  4.ª ronda (12-11-2026, teste na obra 1854):
+'    - aviso ao gravar O4L com peças de Comp ou Larg diferentes (pode ignorar);
+'    - coluna Notas na lista das peças; roda do rato nas duas listas (modColar);
+'    - Comp e Larg no quadro 2.
 '====================================================================
 
 Private Const EXCEDENTE_POR_DEFEITO As String = "20"
@@ -67,7 +71,7 @@ Private mCodigoAntigo As String  ' código da linha de onde o menu abriu (para ed
 Private mLo As ListObject
 Private cId As Long, cDesc As Long, cMat As Long, cComp As Long, cLarg As Long
 Private cQt As Long, cEsp As Long, cEspMat As Long, cEspFinal As Long, cColar As Long
-Private cMaisComp As Long, cMaisLarg As Long
+Private cMaisComp As Long, cMaisLarg As Long, cNotas As Long
 Private mAPreparar As Boolean
 ' Arestas com orla depois da colagem: C1 (comprimento de baixo), C2 (de cima),
 ' L1 (largura da esquerda), L2 (da direita).
@@ -100,6 +104,7 @@ Private Sub UserForm_Initialize()
     cEspMat = ColarIndice("ESPMAT")
     cEspFinal = ColarIndice("ESPFINAL")
     cColar = ColarIndice("COLAR")
+    cNotas = ColarIndice("NOTAS")
     cMaisComp = ColarIndiceMais("COMP")
     cMaisLarg = ColarIndiceMais("LARG")
 
@@ -109,6 +114,15 @@ Private Sub UserForm_Initialize()
     PrepararPelaCelulaAtiva
     mAPreparar = False
     Atualizar
+    ColarRodaLigar   ' a roda do rato passa a mexer nas listas
+End Sub
+
+Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
+    ColarRodaDesligar
+End Sub
+
+Private Sub UserForm_Terminate()
+    ColarRodaDesligar
 End Sub
 
 Private Function Novo(ByVal tipo As String, ByVal nome As String, ByVal esquerda As Single, _
@@ -153,8 +167,8 @@ Private Sub CriarControlos()
         8, 6, 736, 28
 
     ' 1. Peças da listagem
-    Rotulo "lbl1", "1. Peças da listagem   (ID | Descrição | Material | Comp x Larg | Qt | Esp.Mat | Esp | Colar)", _
-        8, 40, 470, 14, True
+    Rotulo "lbl1", "1. Peças  (ID | Descrição | Material | Comp x Larg | Qt | Esp.Mat | Esp | Colar | Notas)", _
+        8, 40, 476, 14, True
     Set chkSoVermelhas = Novo("Forms.CheckBox.1", "chkSoVermelhas", 486, 38, 258, 16, _
         "Mostrar só as linhas com o Material a vermelho: a espessura do material é diferente da Esp do iMos.")
     chkSoVermelhas.Caption = "Só as linhas a vermelho (espessura diferente)"
@@ -166,8 +180,8 @@ Private Sub CriarControlos()
     Set lstPecas = Novo("Forms.ListBox.1", "lstPecas", 8, 80, 736, 132, _
         "Selecione uma ou mais peças (Ctrl/Shift para várias) e carregue em «Juntar ao conjunto», " & _
         "ou faça duplo clique numa peça.")
-    lstPecas.ColumnCount = 8
-    lstPecas.ColumnWidths = "28;150;206;84;26;42;30;160"
+    lstPecas.ColumnCount = 9
+    lstPecas.ColumnWidths = "28;130;180;78;24;40;30;110;200"
     lstPecas.MultiSelect = fmMultiSelectExtended
 
     Set btnAdicionar = Novo("Forms.CommandButton.1", "btnAdicionar", 8, 217, 170, 22, _
@@ -176,11 +190,11 @@ Private Sub CriarControlos()
     btnAdicionar.Caption = "Juntar ao conjunto"
 
     ' 2. Conjunto
-    Rotulo "lbl2", "2. Conjunto a colar   (ID | Qt | Descrição | Esp.Mat | Esp)", 8, 248, 460, 14, True
+    Rotulo "lbl2", "2. Conjunto a colar   (ID | Qt | Descrição | Comp | Larg | Esp.Mat | Esp)", 8, 248, 460, 14, True
     Set lstConjunto = Novo("Forms.ListBox.1", "lstConjunto", 8, 264, 460, 96, _
         "As peças de UM conjunto. Selecione uma para ver o desenho dela, mudar a quantidade ou a tirar.")
-    lstConjunto.ColumnCount = 5
-    lstConjunto.ColumnWidths = "30;28;270;60;40"
+    lstConjunto.ColumnCount = 7
+    lstConjunto.ColumnWidths = "30;26;186;52;52;50;40"
     Set btnMais = Novo("Forms.CommandButton.1", "btnMais", 476, 264, 40, 22, _
         "Mais uma peça do ID selecionado no conjunto.")
     btnMais.Caption = "+1"
@@ -303,7 +317,7 @@ Private Function PassaPesquisa(ByVal linha As Long) As Boolean
     End If
     texto = LCase$(Celula(linha, cId) & " " & Celula(linha, cDesc) & " " & Celula(linha, cMat) & " " & _
                    Celula(linha, cComp) & " " & Celula(linha, cLarg) & " " & Celula(linha, cEsp) & " " & _
-                   Celula(linha, cColar))
+                   Celula(linha, cColar) & " " & Celula(linha, cNotas))
     palavras = Split(LCase$(Trim$(txtPesquisa.Text)), " ")
     For i = LBound(palavras) To UBound(palavras)
         If Len(palavras(i)) > 0 Then
@@ -330,6 +344,7 @@ Private Sub PreencherPecas()
                 lstPecas.List(i, 5) = Celula(r, cEspMat)
                 lstPecas.List(i, 6) = Celula(r, cEsp)
                 lstPecas.List(i, 7) = Celula(r, cColar)
+                lstPecas.List(i, 8) = Celula(r, cNotas)
             End If
         End If
     Next r
@@ -422,6 +437,24 @@ Private Function IdDoDesenho() As String
     Next k
 End Function
 
+' Peças do conjunto com Comp ou Larg diferentes: texto para o aviso ("" = todas iguais).
+Private Function MedidasDiferentes() As String
+    Dim k As Variant, r As Long, medida As String, primeira As String, lista As String, diferente As Boolean
+    For Each k In mConj.Keys
+        r = ColarLinhaDoId(CStr(k))
+        If r > 0 Then
+            medida = Celula(r, cComp) & " x " & Celula(r, cLarg)
+            lista = lista & vbCrLf & "   ID " & k & ": " & medida
+            If Len(primeira) = 0 Then
+                primeira = medida
+            ElseIf medida <> primeira Then
+                diferente = True
+            End If
+        End If
+    Next k
+    If diferente Then MedidasDiferentes = lista
+End Function
+
 Private Function CodigoAtual() As String
     CodigoAtual = ColarMontar(chkCncInicio.Value, mConj, _
         ColarOrlasTexto(NComp(), NLarg(), chkRaio.Value), chkCncFim.Value)
@@ -505,8 +538,10 @@ Private Sub Atualizar()
         qtCorte = qtCorte & "ID " & CStr(k) & " = " & q * NumConjuntos()
         If r > 0 Then
             lstConjunto.List(i, 2) = Celula(r, cDesc)
-            lstConjunto.List(i, 3) = Celula(r, cEspMat)
-            lstConjunto.List(i, 4) = Celula(r, cEsp)
+            lstConjunto.List(i, 3) = Celula(r, cComp)
+            lstConjunto.List(i, 4) = Celula(r, cLarg)
+            lstConjunto.List(i, 5) = Celula(r, cEspMat)
+            lstConjunto.List(i, 6) = Celula(r, cEsp)
             espTxt = Celula(r, cEspMat)
             If Numero(espTxt) < 0 Then
                 semEsp = True
@@ -662,6 +697,14 @@ Private Sub btnTirar_Click()
     Atualizar
 End Sub
 
+Private Sub lstPecas_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    Set gColarListaRoda = lstPecas
+End Sub
+
+Private Sub lstConjunto_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    Set gColarListaRoda = lstConjunto
+End Sub
+
 Private Sub lstConjunto_Click()
     If mAPreparar Then Exit Sub
     DesenharPeca
@@ -718,6 +761,19 @@ Private Sub btnGravar_Click()
     If ColarTotalPecas(mConj) < 2 Then
         Estado "O conjunto precisa de pelo menos 2 peças."
         Exit Sub
+    End If
+    If NComp() = 2 And NLarg() = 2 Then
+        Dim medidas As String
+        medidas = MedidasDiferentes()
+        If Len(medidas) > 0 Then
+            If MsgBox("Não é possível orlar os 4 lados (O4L) com peças de dimensões diferentes:" & _
+                      medidas & vbCrLf & vbCrLf & _
+                      "Gravar mesmo assim?", vbYesNo + vbExclamation + vbDefaultButton2, _
+                      "Colar - orlar 4 lados") <> vbYes Then
+                Estado "Não gravado: reveja as orlas ou as peças do conjunto."
+                Exit Sub
+            End If
+        End If
     End If
     cod = CodigoAtual()
     msg = ColarGravar(mConj, cod, mCodigoAntigo, True, CBool(chkMudarQt.Value), _

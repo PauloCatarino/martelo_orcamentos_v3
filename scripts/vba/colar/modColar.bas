@@ -31,6 +31,35 @@ Option Explicit
 Public Const COLAR_FOLHA As String = "LISTAGEM_CUT_RITE"
 Public Const COLAR_TABELA As String = "Tabela_Cut_Rite"
 
+' Roda do rato nas listas do menu (ver «RODA DO RATO» no fim do módulo)
+Public Type COLAR_PONTO
+    x As Long
+    y As Long
+End Type
+
+Public Type COLAR_RATO
+    pt As COLAR_PONTO
+    hwnd As LongPtr
+    wHitTestCode As Long
+    dwExtraInfo As LongPtr
+    mouseData As Long
+End Type
+
+' Cada Declare numa linha só: partido com " _", o AddFromString do VBE deixa uma
+' linha "()" solta no fim do módulo e o projeto deixa de compilar.
+Private Declare PtrSafe Function SetWindowsHookEx Lib "user32" Alias "SetWindowsHookExA" (ByVal idHook As Long, ByVal lpfn As LongPtr, ByVal hmod As LongPtr, ByVal dwThreadId As Long) As LongPtr
+Private Declare PtrSafe Function CallNextHookEx Lib "user32" (ByVal hHook As LongPtr, ByVal nCode As Long, ByVal wParam As LongPtr, ByRef lParam As Any) As LongPtr
+Private Declare PtrSafe Function UnhookWindowsHookEx Lib "user32" (ByVal hHook As LongPtr) As Long
+Private Declare PtrSafe Function GetCurrentThreadId Lib "kernel32" () As Long
+
+Private Const WH_MOUSE As Long = 7
+Private Const HC_ACTION As Long = 0
+Private Const WM_MOUSEWHEEL As Long = &H20A
+Private Const LINHAS_POR_PASSO As Long = 3
+
+Public gColarListaRoda As Object
+Private mGanchoRoda As LongPtr
+
 '====================================================================
 '  MACROS DOS BOTÕES
 '====================================================================
@@ -548,4 +577,47 @@ Public Function ColarProblemas(Optional ByVal maximo As Long = 15) As String
         texto = texto & "- " & lista(i) & vbCrLf
     Next i
     ColarProblemas = texto
+End Function
+
+'====================================================================
+'  RODA DO RATO NAS LISTAS DO MENU (12-11-2026)
+'--------------------------------------------------------------------
+'  As listas dos formulários do Excel não andam com a roda do rato. Um gancho
+'  do Windows (só nesta janela do Excel, enquanto o menu está aberto) apanha a
+'  roda e mexe na lista onde o rato passou por último (gColarListaRoda). O menu
+'  liga-o ao abrir e desliga-o ao fechar; nada aqui pode dar erro, senão o Excel
+'  fecha-se, por isso tudo corre com On Error Resume Next.
+'====================================================================
+
+Public Sub ColarRodaLigar()
+    On Error Resume Next
+    If mGanchoRoda <> 0 Then Exit Sub
+    mGanchoRoda = SetWindowsHookEx(WH_MOUSE, AddressOf ColarRodaGancho, 0, GetCurrentThreadId())
+End Sub
+
+Public Sub ColarRodaDesligar()
+    On Error Resume Next
+    If mGanchoRoda <> 0 Then UnhookWindowsHookEx mGanchoRoda
+    mGanchoRoda = 0
+    Set gColarListaRoda = Nothing
+End Sub
+
+Public Function ColarRodaGancho(ByVal nCode As Long, ByVal wParam As LongPtr, ByRef lParam As COLAR_RATO) As LongPtr
+    Dim novo As Long
+    On Error Resume Next
+    If nCode = HC_ACTION And wParam = WM_MOUSEWHEEL And Not gColarListaRoda Is Nothing Then
+        If gColarListaRoda.ListCount > 0 Then
+            If lParam.mouseData > 0 Then
+                novo = gColarListaRoda.TopIndex - LINHAS_POR_PASSO
+            Else
+                novo = gColarListaRoda.TopIndex + LINHAS_POR_PASSO
+            End If
+            If novo < 0 Then novo = 0
+            If novo > gColarListaRoda.ListCount - 1 Then novo = gColarListaRoda.ListCount - 1
+            gColarListaRoda.TopIndex = novo
+            ColarRodaGancho = 1   ' a roda já foi tratada
+            Exit Function
+        End If
+    End If
+    ColarRodaGancho = CallNextHookEx(mGanchoRoda, nCode, wParam, lParam)
 End Function

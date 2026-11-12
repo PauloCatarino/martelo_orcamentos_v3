@@ -3503,3 +3503,53 @@ Guião de teste:
    conjuntos a **8**.
 9. Confirmar que já não há o campo «Quantas de cada» nem o botão «Tirar o código destas
    peças».
+
+### Coluna «Colar», 4.ª ronda: aviso O4L, Notas, roda do rato (2026-11-12, obra 1854)
+
+Pedidos do Paulo, no menu Colar:
+- **Aviso ao gravar com orla nos 4 lados (O4L) e peças de medidas diferentes.** Se as peças
+  do conjunto não têm todas o mesmo Comp x Larg, aparece «Não é possível orlar os 4 lados
+  (O4L) com peças de dimensões diferentes», com a lista das medidas.
+  - «Sim» grava mesmo assim (o utilizador pode ignorar).
+  - «Não» não grava.
+- **Lista das peças (quadro 1):** coluna nova **Notas** no fim; a pesquisa também procura
+  nas Notas.
+- **Quadro 2 (conjunto):** colunas novas **Comp** e **Larg**.
+- **Roda do rato** nas duas listas. As listas dos formulários do Excel não andam com a roda;
+  um gancho do Windows (só no Excel, enquanto o menu está aberto) faz a lista onde o rato
+  passou por último andar 3 linhas por passo. O menu liga-o ao abrir e desliga-o ao fechar.
+
+Armadilha do VBA, já com teste: um `Declare` partido em duas linhas com « _» faz o
+`AddFromString` deixar uma linha «()» solta no fim do módulo, e o projeto deixa de
+compilar. Os `Declare` ficam numa linha só.
+
+Confirmado numa cópia (obra 0993_04):
+- o projeto VBA compila;
+- o quadro 1 tem 9 colunas (Notas na última);
+- o quadro 2 tem 7 colunas, com o Comp e o Larg da peça;
+- o menu abre e fecha com o gancho da roda ligado;
+- os conjuntos e a Qt da 3.ª ronda continuam certos.
+
+A roda e o aviso só se veem no ecrã: é no teste.
+
+O modelo Colar do servidor foi refeito; o anterior ficou ao lado, como
+`..._COLAR_anterior_20261112_163035.xltm`. Na pasta do modelo há agora 3 COLAR «anterior»:
+podem ser apagados quando o ensaio fechar. **A lista da obra 1854 já aberta tem o menu
+anterior**: criar outra vez a lista para testar.
+
+Guião de teste (obra 1854):
+
+1. Produção → obra 1854 → Funções → «Lista Material com coluna Colar (ensaio)…» →
+   «Criar nova (substitui a atual)» → passo 1 (CSV) e passo 2 (AUTOMATION).
+2. Duplo clique numa célula da Colar. Esperado:
+   - o quadro 1 tem a coluna Notas no fim;
+   - com o rato por cima da lista, a roda faz a lista subir e descer.
+3. Juntar ao conjunto duas peças com medidas diferentes (ex.: um Comp diferente). Esperado:
+   - o quadro 2 mostra o Comp e o Larg de cada uma;
+   - a roda também mexe nesta lista.
+4. Clicar em «4 lados (O4L)» → **Gravar**. Esperado: o aviso «Não é possível orlar os 4 lados
+   (O4L) com peças de dimensões diferentes», com as medidas das peças.
+   - «Não» → nada é gravado.
+   - Repetir e responder «Sim» → grava.
+5. Com duas peças de medidas iguais e O4L → Gravar. Esperado: grava sem aviso.
+6. Fechar o menu e confirmar que a roda do rato continua normal na folha do Excel.

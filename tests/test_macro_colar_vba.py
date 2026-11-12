@@ -103,6 +103,32 @@ def test_menu_3a_ronda_conjuntos_desenho_da_linha_selecionada():
     assert "btnLimpar" not in codigo and '"Tirar o código destas peças"' not in codigo
 
 
+def test_menu_4a_ronda_aviso_o4l_notas_roda_e_medidas():
+    menu = _ler(COLAR / "frmColar.vba")
+    assert "Private Function MedidasDiferentes() As String" in menu
+    assert "If NComp() = 2 And NLarg() = 2 Then" in menu
+    assert "Não é possível orlar os 4 lados (O4L) com peças de dimensões diferentes" in menu
+    assert "vbYesNo + vbExclamation + vbDefaultButton2" in menu  # pode ignorar e gravar
+    assert "lstPecas.ColumnCount = 9" in menu and "lstPecas.List(i, 8) = Celula(r, cNotas)" in menu
+    assert "lstConjunto.ColumnCount = 7" in menu
+    assert "lstConjunto.List(i, 3) = Celula(r, cComp)" in menu
+    assert "lstConjunto.List(i, 4) = Celula(r, cLarg)" in menu
+    assert "ColarRodaLigar" in menu and menu.count("ColarRodaDesligar") >= 2
+    assert "Set gColarListaRoda = lstPecas" in menu and "Set gColarListaRoda = lstConjunto" in menu
+
+    modulo = _ler(COLAR / "modColar.bas")
+    assert "Public Function ColarRodaGancho(" in modulo
+    assert "AddressOf ColarRodaGancho" in modulo
+    # Declare partido com " _" deixa uma linha "()" solta no VBE e o projeto não compila.
+    for linha in modulo.splitlines():
+        if "Declare PtrSafe" in linha:
+            assert not linha.rstrip().endswith(" _"), linha
+    # Tipos e Declare no topo, antes do 1.º procedimento.
+    primeiro_proc = modulo.index("Public Sub AbrirMenuColar()")
+    assert modulo.index("Public Type COLAR_RATO") < primeiro_proc
+    assert modulo.index("Private Declare PtrSafe Function SetWindowsHookEx") < primeiro_proc
+
+
 def test_copia_listagem_do_colar_vai_ate_ao_mais_larg_e_confere_a_colar():
     codigo = _ler(COLAR / "Copia_List_Soft_Cut_Rite.bas")
     assert "colFim = ColunaMaisLarg(lo)" in codigo
