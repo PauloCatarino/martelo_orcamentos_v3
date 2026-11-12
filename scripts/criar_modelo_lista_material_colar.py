@@ -55,12 +55,15 @@ MODULOS_COLAR = (
     ("modColar.bas", "modColar", 1),
     ("frmColar.vba", "frmColar", 3),
     ("Copia_List_Soft_Cut_Rite.bas", "Copia_List_Soft_Cut_Rite", None),
+    # ResumoOrlas com as orlas antes e depois de colar (12-11-2026).
+    ("modResumoOrlas.bas", "modResumoOrlas", None),
 )
 CODIGO_DA_FOLHA = "Folha5_LISTAGEM_CUT_RITE.cls"
 MARCADORES = {
     "modColar": "Public Function ColarProblemas",
     "frmColar": "Private Sub btnGravar_Click",
     "Copia_List_Soft_Cut_Rite": "ColunaMaisLarg(lo)",
+    "modResumoOrlas": "Private Sub ResumoOrlas_Colagens(",
 }
 
 XL_TO_RIGHT = -4161

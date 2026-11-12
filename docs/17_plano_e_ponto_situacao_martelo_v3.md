@@ -3553,3 +3553,72 @@ Guião de teste (obra 1854):
    - Repetir e responder «Sim» → grava.
 5. Com duas peças de medidas iguais e O4L → Gravar. Esperado: grava sem aviso.
 6. Fechar o menu e confirmar que a roda do rato continua normal na folha do Excel.
+
+### ResumoOrlas com as colagens (2026-11-12, modelo COLAR)
+
+Pedido do Paulo: o separador **ResumoOrlas** (ml de orla por material e orla, com 8 % de
+desperdício) passa a contar as colagens da coluna Colar. **Só no modelo de ensaio COLAR**:
+`scripts/vba/colar/modResumoOrlas.bas`, que o `criar_modelo_lista_material_colar.py` mete no
+modelo. O modelo de sempre fica igual.
+
+Regras:
+- **Linhas sem Colar:** tudo como antes.
+- **Linhas com Colar, orlas nas colunas ESQ/DIR/CIMA/BAIXO:** são orlas **antes de colar**. A
+  largura da fita vem da **Esp.Mat** (19 → 22 mm) e o resumo usa o nome real do material
+  (`..._19MM`).
+- **Orlas depois de colar:** vêm do código (O4L, OC2, OC1, OL2, OL1, OR) e contam **uma vez
+  por conjunto**:
+  - **nº de conjuntos** = Qt do 1.º ID do código ÷ peças desse ID no conjunto. Por exemplo,
+    `47+47` com Qt 16 dá 8 conjuntos e `47+48` com Qt 6 e 6 dá 6 conjuntos, contados uma vez
+    e não duas;
+  - **medidas:** as comuns às peças do conjunto. Só se orla o lado em que batem certo: os
+    comprimentos se o Comp é igual em todas, as larguras se a Larg é igual. Se não batem,
+    conta a maior e aparece um aviso;
+  - **ml** = (nº de comprimentos × Comp + nº de larguras × Larg) ÷ 1000 × nº de conjuntos. O4L
+    são 2 + 2, e **OR conta 1 comprimento** (decisão do Paulo);
+  - **fita e material:** a largura da fita vem da **Esp.Final** (Esp do iMos), e o material
+    aparece com essa espessura (ex.: `..._30MM`), como já era;
+  - **orla:** a da própria peça, a 1.ª preenchida nas colunas Orla. Sem nenhuma, aparece um
+    aviso e o conjunto não conta.
+- **O desperdício de 8 % e o arredondamento para cima ficam iguais.**
+- **Avisos novos** (folha Avisos_Orlas e caixa no fim): `COLAR_CODIGO_INVALIDO`,
+  `COLAR_ID_EM_FALTA`, `COLAR_QT_NAO_DIVIDE`, `COLAR_LADO_NAO_BATE`, `COLAR_SEM_ORLA`.
+- **Correção de passagem:** no resumo, o material saía `..._30.MM` em vez de `..._30MM`. Está
+  corrigido no modelo COLAR; no de sempre continua o defeito.
+
+**Menu Colar.** O aviso que era só para o O4L passa a ver lado a lado:
+- orla nos comprimentos (ou OR) com Comp diferentes → aviso;
+- orla nas larguras com Larg diferentes → aviso.
+
+Pode ignorar, como antes. O quadro de informação diz que lados batem certo, ex.: «Comp igual
+(2394): pode orlar os comprimentos · Larg diferentes: não orlar as larguras». O código aceita
+conjuntos como `3x2+5`: duas peças do ID 3 e uma do ID 5.
+
+Confirmado em cópias das obras 0993_04, 1935_01 e 1854_01. Refiz em Python estas regras e
+comparei **todas as linhas** do ResumoOrlas, com o resultado **igual**:
+- sem colagens;
+- com 3 conjuntos: `X+X_O4L` com 8 conjuntos, `A+B_OC2+OR` com o mesmo Comp e 6 conjuntos,
+  e `Cx2+D_OL1` com Larg diferentes e 3 conjuntos (dá o aviso «lado não bate»).
+
+O projeto VBA compila e todos os testes do Martelo passam. O modelo COLAR do servidor foi
+refeito; o anterior ficou `..._COLAR_anterior_20261112_181748.xltm`.
+
+Guião de teste (obra 1854):
+
+1. Produção → obra 1854 → Funções → «Lista Material com coluna Colar (ensaio)…» → «Criar nova
+   (substitui a atual)» → passo 1 (CSV) e passo 2 (AUTOMATION).
+2. **Antes de colar:** botão «Calculo Orlas» → anotar os ml do separador ResumoOrlas.
+3. Colar uma peça com orla consigo própria (ex.: ID 9), 2 vezes → «O4L», **8 conjuntos** →
+   Gravar. Esperado: Qt do ID 9 = 16.
+4. «Calculo Orlas» outra vez. Esperado:
+   - as orlas das colunas do ID 9 contam com Qt 16 e fita da Esp.Mat;
+   - a mais, na mesma orla, 2 × (Comp + Larg) ÷ 1000 × 8 + 8 %, arredondado para cima. Se a
+     Esp do iMos é diferente da do material, isto aparece numa linha à parte, com o material
+     na espessura do iMos (ex.: `_38MM`).
+5. **Conjunto com Larg diferentes e orla numa largura:**
+   - colar ID 11 + ID 12 → «1 largura (OL1)» → Gravar;
+   - esperado no menu: o aviso «Não é possível orlar as larguras (Larg diferentes)…». Responder
+     «Sim» e gravar;
+   - «Calculo Orlas» → esperado o aviso «Colagens (coluna Colar): 1» e, na folha Avisos_Orlas,
+     `COLAR_LADO_NAO_BATE`.
+6. Conferir que as linhas sem Colar dão os mesmos ml que antes.

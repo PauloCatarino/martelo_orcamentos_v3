@@ -29,6 +29,9 @@ Option Explicit
 '    - aviso ao gravar O4L com peças de Comp ou Larg diferentes (pode ignorar);
 '    - coluna Notas na lista das peças; roda do rato nas duas listas (modColar);
 '    - Comp e Larg no quadro 2.
+'  5.ª ronda (12-11-2026): só se orla o lado em que as peças batem certo — os
+'    comprimentos (OC/OR) se o Comp é igual em todas, as larguras (OL) se a Larg é
+'    igual; o aviso ao gravar vê lado a lado e o quadro de informação diz quais batem.
 '====================================================================
 
 Private Const EXCEDENTE_POR_DEFEITO As String = "20"
@@ -437,23 +440,26 @@ Private Function IdDoDesenho() As String
     Next k
 End Function
 
-' Peças do conjunto com Comp ou Larg diferentes: texto para o aviso ("" = todas iguais).
-Private Function MedidasDiferentes() As String
-    Dim k As Variant, r As Long, medida As String, primeira As String, lista As String, diferente As Boolean
+' Medidas das peças do conjunto: se o Comp e a Larg batem certo em todas, a medida
+' comum (ou "diferentes") e a lista ID: Comp x Larg para o aviso.
+Private Sub MedidasDoConjunto(ByRef compIguais As Boolean, ByRef largIguais As Boolean, _
+                              ByRef compTxt As String, ByRef largTxt As String, ByRef lista As String)
+    Dim k As Variant, r As Long, primeiro As Boolean
+    compIguais = True: largIguais = True: primeiro = True
+    compTxt = "": largTxt = "": lista = ""
     For Each k In mConj.Keys
         r = ColarLinhaDoId(CStr(k))
         If r > 0 Then
-            medida = Celula(r, cComp) & " x " & Celula(r, cLarg)
-            lista = lista & vbCrLf & "   ID " & k & ": " & medida
-            If Len(primeira) = 0 Then
-                primeira = medida
-            ElseIf medida <> primeira Then
-                diferente = True
+            lista = lista & vbCrLf & "   ID " & k & ": " & Celula(r, cComp) & " x " & Celula(r, cLarg)
+            If primeiro Then
+                compTxt = Celula(r, cComp): largTxt = Celula(r, cLarg): primeiro = False
+            Else
+                If Numero(Celula(r, cComp)) <> Numero(compTxt) Then compIguais = False
+                If Numero(Celula(r, cLarg)) <> Numero(largTxt) Then largIguais = False
             End If
         End If
     Next k
-    If diferente Then MedidasDiferentes = lista
-End Function
+End Sub
 
 Private Function CodigoAtual() As String
     CodigoAtual = ColarMontar(chkCncInicio.Value, mConj, _
@@ -571,6 +577,12 @@ Private Sub Atualizar()
     End If
     If mConj.Count > 0 Then
         lblEsp.Caption = lblEsp.Caption & vbLf & "Qt a cortar (" & NumConjuntos() & " conjunto(s)): " & qtCorte
+        Dim cIg As Boolean, lIg As Boolean, cT As String, lT As String, lst As String
+        MedidasDoConjunto cIg, lIg, cT, lT, lst
+        lblEsp.Caption = lblEsp.Caption & vbLf & _
+            IIf(cIg, "Comp igual (" & cT & "): pode orlar os comprimentos", "Comp diferentes: não orlar os comprimentos") & _
+            " · " & _
+            IIf(lIg, "Larg igual (" & lT & "): pode orlar as larguras", "Larg diferentes: não orlar as larguras")
     End If
 
     ' Voltar a selecionar a linha que estava selecionada (o desenho segue-a).
@@ -762,17 +774,22 @@ Private Sub btnGravar_Click()
         Estado "O conjunto precisa de pelo menos 2 peças."
         Exit Sub
     End If
-    If NComp() = 2 And NLarg() = 2 Then
-        Dim medidas As String
-        medidas = MedidasDiferentes()
-        If Len(medidas) > 0 Then
-            If MsgBox("Não é possível orlar os 4 lados (O4L) com peças de dimensões diferentes:" & _
-                      medidas & vbCrLf & vbCrLf & _
-                      "Gravar mesmo assim?", vbYesNo + vbExclamation + vbDefaultButton2, _
-                      "Colar - orlar 4 lados") <> vbYes Then
-                Estado "Não gravado: reveja as orlas ou as peças do conjunto."
-                Exit Sub
-            End If
+    ' Só se orla o lado em que as peças batem certo.
+    Dim cIguais As Boolean, lIguais As Boolean, cTxt As String, lTxt As String
+    Dim medidas As String, lados As String
+    MedidasDoConjunto cIguais, lIguais, cTxt, lTxt, medidas
+    If (NComp() > 0 Or chkRaio.Value) And Not cIguais Then lados = "os comprimentos (Comp diferentes)"
+    If NLarg() > 0 And Not lIguais Then
+        If Len(lados) > 0 Then lados = lados & " nem "
+        lados = lados & "as larguras (Larg diferentes)"
+    End If
+    If Len(lados) > 0 Then
+        If MsgBox("Não é possível orlar " & lados & " com peças de dimensões diferentes:" & _
+                  medidas & vbCrLf & vbCrLf & _
+                  "Gravar mesmo assim?", vbYesNo + vbExclamation + vbDefaultButton2, _
+                  "Colar - orlar com medidas diferentes") <> vbYes Then
+            Estado "Não gravado: reveja as orlas ou as peças do conjunto."
+            Exit Sub
         End If
     End If
     cod = CodigoAtual()

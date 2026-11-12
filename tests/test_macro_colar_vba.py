@@ -105,9 +105,12 @@ def test_menu_3a_ronda_conjuntos_desenho_da_linha_selecionada():
 
 def test_menu_4a_ronda_aviso_o4l_notas_roda_e_medidas():
     menu = _ler(COLAR / "frmColar.vba")
-    assert "Private Function MedidasDiferentes() As String" in menu
-    assert "If NComp() = 2 And NLarg() = 2 Then" in menu
-    assert "Não é possível orlar os 4 lados (O4L) com peças de dimensões diferentes" in menu
+    # 5.ª ronda: o aviso vê lado a lado (comprimentos com OC/OR, larguras com OL).
+    assert "Private Sub MedidasDoConjunto(" in menu
+    assert "If (NComp() > 0 Or chkRaio.Value) And Not cIguais Then" in menu
+    assert "If NLarg() > 0 And Not lIguais Then" in menu
+    assert '"Não é possível orlar " & lados & " com peças de dimensões diferentes:"' in menu
+    assert "pode orlar os comprimentos" in menu and "não orlar as larguras" in menu
     assert "vbYesNo + vbExclamation + vbDefaultButton2" in menu  # pode ignorar e gravar
     assert "lstPecas.ColumnCount = 9" in menu and "lstPecas.List(i, 8) = Celula(r, cNotas)" in menu
     assert "lstConjunto.ColumnCount = 7" in menu
@@ -127,6 +130,29 @@ def test_menu_4a_ronda_aviso_o4l_notas_roda_e_medidas():
     primeiro_proc = modulo.index("Public Sub AbrirMenuColar()")
     assert modulo.index("Public Type COLAR_RATO") < primeiro_proc
     assert modulo.index("Private Declare PtrSafe Function SetWindowsHookEx") < primeiro_proc
+
+
+def test_resumo_orlas_do_colar_conta_antes_e_depois_de_colar():
+    colar = _ler(COLAR / "modResumoOrlas.bas")
+    sempre = _ler(VBA / "modResumoOrlas.bas")
+    # O modelo de sempre fica como estava.
+    assert "COLAR" not in sempre.upper().replace("CALCULO", "")
+    assert "ResumoOrlas_Colagens" not in sempre
+    # Linhas com Colar: orlas da linha antes de colar, fita pela Esp.Mat e material real.
+    assert 'idxColar = GetColIndexByNorm(lo, "COLAR")' in colar
+    assert "AccOrla dict, material, oEsq, compMM, qt, espAntes" in colar
+    # Depois de colar: uma vez por conjunto, nº de conjuntos = Qt do 1.º ID / peças dele.
+    assert "motivo = ColarLer(CStr(codigo), conj, ci, cf, nc, nl, ra)" in colar
+    assert "nConj = qtPrimeiro / CDbl(conj(primeiroId))" in colar
+    assert "If ra Then mlLados = mlLados + compMax   ' OR (raio / meia-lua) conta 1 comprimento" in colar
+    assert "AccOrlaMl dict, BuildResumoMaterial(material, espFinal, espMat), orla, ml, espFinal" in colar
+    for aviso in ("COLAR_CODIGO_INVALIDO", "COLAR_ID_EM_FALTA", "COLAR_QT_NAO_DIVIDE",
+                  "COLAR_LADO_NAO_BATE", "COLAR_SEM_ORLA"):
+        assert f'"{aviso}"' in colar
+    # O desperdício continua o mesmo.
+    assert "Private Const DESPERDICIO As Double = 0.08" in colar
+    # O resto do módulo é o de sempre (só se acrescenta).
+    assert colar.count("Private Sub AccOrla(") == 1 and "Private Function GetLarguraFita(" in colar
 
 
 def test_copia_listagem_do_colar_vai_ate_ao_mais_larg_e_confere_a_colar():
