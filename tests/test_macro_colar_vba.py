@@ -67,8 +67,9 @@ def test_gravar_muda_a_qt_e_os_excedentes():
     codigo = _ler(COLAR / "modColar.bas")
     assert "Public Function ColarIndiceMais(" in codigo
     assert "Optional ByVal mudarQt As Boolean = False" in codigo
-    # 5+5 -> Qt 2: o Cut-Rite corta as peças todas do conjunto.
-    assert "If CLng(conj(idTxt)) >= 2 Then" in codigo
+    # Qt = peças da linha no conjunto x nº de conjuntos (47+47 x 8 -> 16; 47+48 x 6 -> 6 e 6).
+    assert "Optional ByVal conjuntos As Long = 1) As String" in codigo
+    assert "lo.DataBodyRange.Cells(r, colQt).Value = CLng(conj(idTxt)) * conjuntos" in codigo
     assert "lo.DataBodyRange.Cells(r, colMaisComp).Value" in codigo
     assert "lo.DataBodyRange.Cells(r, colMaisLarg).Value" in codigo
 
@@ -88,6 +89,18 @@ def test_menu_2a_ronda_pesquisa_excedentes_tolerancia_e_arestas():
     nomes = re.findall(r"^(?:Private|Public) (?:Const|Function|Sub) (\w+)", codigo, re.MULTILINE)
     minusculas = [n.lower() for n in nomes]
     assert len(minusculas) == len(set(minusculas))
+
+
+def test_menu_3a_ronda_conjuntos_desenho_da_linha_selecionada():
+    codigo = _ler(COLAR / "frmColar.vba")
+    assert "Private WithEvents txtConjuntos As MSForms.TextBox" in codigo
+    assert "Trim$(txtMaisComp.Text), Trim$(txtMaisLarg.Text), NumConjuntos())" in codigo
+    assert "Private Sub lstConjunto_Click()" in codigo
+    assert "ident = IdDoDesenho()" in codigo
+    assert "txtConjuntos.Text = CStr(ConjuntosDaLinha(r))" in codigo
+    # Saíram: «Quantas de cada» e «Tirar o código destas peças».
+    assert "Set txtQt" not in codigo and '"Quantas de cada:"' not in codigo
+    assert "btnLimpar" not in codigo and '"Tirar o código destas peças"' not in codigo
 
 
 def test_copia_listagem_do_colar_vai_ate_ao_mais_larg_e_confere_a_colar():

@@ -19,6 +19,12 @@ Option Explicit
 '    - +comp / +Larg = 20 por defeito (excedente de corte), editáveis;
 '    - pesquisa na lista das peças;
 '    - orlas depois da colagem clicando nas arestas do desenho da peça.
+'  3.ª ronda (12-11-2026):
+'    - «Nº de conjuntos» (produto final já colado): a Qt de cada peça passa a ser
+'      peças dela no conjunto x nº de conjuntos (47+47 x 8 -> Qt 16; 47+48 x 6 -> 6 e 6);
+'    - o desenho mostra a peça selecionada no quadro 2 (antes era só a 1.ª);
+'    - sem o campo «Quantas de cada» (cada peça entra 1 vez; +1 para repetir) e sem o
+'      botão «Tirar o código destas peças».
 '====================================================================
 
 Private Const EXCEDENTE_POR_DEFEITO As String = "20"
@@ -42,10 +48,9 @@ Private WithEvents lblArestaL2 As MSForms.Label
 Private WithEvents btnQuatroLados As MSForms.CommandButton
 Private WithEvents btnSemOrla As MSForms.CommandButton
 Private WithEvents btnGravar As MSForms.CommandButton
-Private WithEvents btnLimpar As MSForms.CommandButton
 Private WithEvents btnVerificar As MSForms.CommandButton
 Private WithEvents btnFechar As MSForms.CommandButton
-Private txtQt As MSForms.TextBox
+Private WithEvents txtConjuntos As MSForms.TextBox
 Private txtMaisComp As MSForms.TextBox
 Private txtMaisLarg As MSForms.TextBox
 Private chkMudarQt As MSForms.CheckBox
@@ -165,18 +170,15 @@ Private Sub CriarControlos()
     lstPecas.ColumnWidths = "28;150;206;84;26;42;30;160"
     lstPecas.MultiSelect = fmMultiSelectExtended
 
-    Rotulo "lblQt", "Quantas de cada:", 8, 222, 80, 14
-    Set txtQt = Novo("Forms.TextBox.1", "txtQt", 88, 219, 34, 18, _
-        "Quantas peças de cada linha escolhida entram no conjunto (ex.: 2 para duas peças iguais).")
-    txtQt.Text = "1"
-    Set btnAdicionar = Novo("Forms.CommandButton.1", "btnAdicionar", 130, 217, 170, 22, _
-        "Juntar as peças selecionadas ao conjunto, com a quantidade ao lado.")
+    Set btnAdicionar = Novo("Forms.CommandButton.1", "btnAdicionar", 8, 217, 170, 22, _
+        "Juntar as peças selecionadas ao conjunto (1 de cada; use +1 no quadro 2 para a mesma peça " & _
+        "entrar mais vezes, ex.: 47+47).")
     btnAdicionar.Caption = "Juntar ao conjunto"
 
     ' 2. Conjunto
     Rotulo "lbl2", "2. Conjunto a colar   (ID | Qt | Descrição | Esp.Mat | Esp)", 8, 248, 460, 14, True
     Set lstConjunto = Novo("Forms.ListBox.1", "lstConjunto", 8, 264, 460, 96, _
-        "As peças do conjunto. Selecione uma para lhe mudar a quantidade ou a tirar.")
+        "As peças de UM conjunto. Selecione uma para ver o desenho dela, mudar a quantidade ou a tirar.")
     lstConjunto.ColumnCount = 5
     lstConjunto.ColumnWidths = "30;28;270;60;40"
     Set btnMais = Novo("Forms.CommandButton.1", "btnMais", 476, 264, 40, 22, _
@@ -198,19 +200,25 @@ Private Sub CriarControlos()
     Set chkCncFim = Novo("Forms.CheckBox.1", "chkCncFim", 8, 404, 290, 16, _
         "O conjunto já colado passa na CNC no FIM (o código acaba em _CNC).")
     chkCncFim.Caption = "CNC depois da colagem (CNC no fim)"
-    Set chkMudarQt = Novo("Forms.CheckBox.1", "chkMudarQt", 8, 428, 300, 16, _
-        "A Qt de cada peça passa a ser quantas entram no conjunto (5+5 -> Qt 2): é o que o Cut-Rite corta.")
-    chkMudarQt.Caption = "Qt da peça = quantas entram no conjunto"
+    Rotulo "lblConjuntos", "Nº de conjuntos (já colados):", 8, 427, 140, 14
+    Set txtConjuntos = Novo("Forms.TextBox.1", "txtConjuntos", 150, 424, 40, 18, _
+        "Quantos conjuntos já colados são precisos (o produto final). Ex.: 47+47 e 8 conjuntos = " & _
+        "cortar 16 peças do ID 47; 47+48 e 6 conjuntos = 6 do ID 47 e 6 do ID 48.")
+    txtConjuntos.Text = "1"
+    Set chkMudarQt = Novo("Forms.CheckBox.1", "chkMudarQt", 8, 446, 300, 16, _
+        "A Qt (coluna E) de cada peça passa a ser: peças dela no conjunto x nº de conjuntos. " & _
+        "É o que o Cut-Rite corta.")
+    chkMudarQt.Caption = "Atualizar a Qt (coluna E) para o corte"
     chkMudarQt.Value = True
-    Rotulo "lblMais", "Excedente de corte:   +comp", 8, 454, 124, 14
-    Set txtMaisComp = Novo("Forms.TextBox.1", "txtMaisComp", 134, 451, 36, 18, _
+    Rotulo "lblMais", "Excedente de corte:   +comp", 8, 470, 124, 14
+    Set txtMaisComp = Novo("Forms.TextBox.1", "txtMaisComp", 134, 467, 36, 18, _
         "Milímetros a mais no comprimento, para acertar depois de colar (coluna +comp). Vazio = não mexe.")
     txtMaisComp.Text = EXCEDENTE_POR_DEFEITO
-    Rotulo "lblMaisL", "+Larg", 178, 454, 30, 14
-    Set txtMaisLarg = Novo("Forms.TextBox.1", "txtMaisLarg", 210, 451, 36, 18, _
+    Rotulo "lblMaisL", "+Larg", 178, 470, 30, 14
+    Set txtMaisLarg = Novo("Forms.TextBox.1", "txtMaisLarg", 210, 467, 36, 18, _
         "Milímetros a mais na largura, para acertar depois de colar (coluna +Larg). Vazio = não mexe.")
     txtMaisLarg.Text = EXCEDENTE_POR_DEFEITO
-    Rotulo "lblMaisNota", "(a etiqueta do Cut-Rite mostra a medida da peça e a de corte)", 8, 474, 300, 24
+    Rotulo "lblMaisNota", "(a etiqueta do Cut-Rite mostra a medida da peça e a de corte)", 8, 490, 300, 24
 
     ' 4. Orlas: desenho da peça com as arestas a clicar
     Rotulo "lbl4", "4. Orlar depois da colagem - clique nas arestas da peça", 320, 370, 424, 14, True
@@ -242,13 +250,10 @@ Private Sub CriarControlos()
     Set lblCodigo = Rotulo("lblCodigo", "", 8, 536, 736, 24, True)
     lblCodigo.Font.Size = 14
 
-    Set btnGravar = Novo("Forms.CommandButton.1", "btnGravar", 8, 566, 210, 26, _
+    Set btnGravar = Novo("Forms.CommandButton.1", "btnGravar", 8, 566, 300, 26, _
         "Escrever este código na coluna Colar de todas as peças do conjunto (e a Qt e o +comp/+Larg).")
     btnGravar.Caption = "Gravar nas peças do conjunto"
-    Set btnLimpar = Novo("Forms.CommandButton.1", "btnLimpar", 226, 566, 200, 26, _
-        "Apagar o código da coluna Colar das peças deste conjunto (a Qt e o +comp/+Larg ficam como estão).")
-    btnLimpar.Caption = "Tirar o código destas peças"
-    Set btnVerificar = Novo("Forms.CommandButton.1", "btnVerificar", 434, 566, 190, 26, _
+    Set btnVerificar = Novo("Forms.CommandButton.1", "btnVerificar", 316, 566, 300, 26, _
         "Conferir os códigos de toda a listagem (IDs que não existem, conjuntos desencontrados).")
     btnVerificar.Caption = "Verificar toda a listagem"
     Set btnFechar = Novo("Forms.CommandButton.1", "btnFechar", 644, 566, 100, 26, "Fechar o menu.")
@@ -364,6 +369,7 @@ Private Sub PrepararPelaCelulaAtiva()
             chkRaio.Value = ra
             If Len(Celula(r, cMaisComp)) > 0 Then txtMaisComp.Text = Celula(r, cMaisComp)
             If Len(Celula(r, cMaisLarg)) > 0 Then txtMaisLarg.Text = Celula(r, cMaisLarg)
+            txtConjuntos.Text = CStr(ConjuntosDaLinha(r))
             Estado "A editar o conjunto «" & cod & "». «Gravar» muda o código em todas as peças dele."
             Exit Sub
         End If
@@ -385,6 +391,37 @@ Private Function NLarg() As Long
     NLarg = IIf(mL1, 1, 0) + IIf(mL2, 1, 0)
 End Function
 
+Private Function NumConjuntos() As Long
+    NumConjuntos = CLng(Val(txtConjuntos.Text))
+    If NumConjuntos < 1 Then NumConjuntos = 1
+End Function
+
+' Ao editar: Qt da linha / peças dela no conjunto (ex.: Qt 16 em 47+47 -> 8 conjuntos).
+Private Function ConjuntosDaLinha(ByVal linha As Long) As Long
+    Dim q As Long, ident As String, qt As Double
+    ConjuntosDaLinha = 1
+    ident = Celula(linha, cId)
+    If Not mConj.Exists(ident) Then Exit Function
+    q = CLng(mConj(ident))
+    qt = Numero(Celula(linha, cQt))
+    If q > 0 And qt >= q Then
+        If qt / q = Int(qt / q) Then ConjuntosDaLinha = CLng(qt / q)
+    End If
+End Function
+
+' O ID a desenhar: o selecionado no quadro 2; senão o 1.º do conjunto.
+Private Function IdDoDesenho() As String
+    Dim k As Variant
+    If lstConjunto.ListIndex >= 0 Then
+        IdDoDesenho = CStr(lstConjunto.List(lstConjunto.ListIndex, 0))
+        Exit Function
+    End If
+    For Each k In mConj.Keys
+        IdDoDesenho = CStr(k)
+        Exit Function
+    Next k
+End Function
+
 Private Function CodigoAtual() As String
     CodigoAtual = ColarMontar(chkCncInicio.Value, mConj, _
         ColarOrlasTexto(NComp(), NLarg(), chkRaio.Value), chkCncFim.Value)
@@ -402,17 +439,17 @@ End Function
 ' Desenha a 1.ª peça do conjunto com as proporções Comp x Larg e as arestas.
 Private Sub DesenharPeca()
     Dim comp As Double, larg As Double, w As Single, h As Single, x As Single, y As Single
-    Dim r As Long, k As Variant, desc As String
+    Dim r As Long, desc As String, ident As String
     comp = 600: larg = 400
-    For Each k In mConj.Keys
-        r = ColarLinhaDoId(CStr(k))
+    ident = IdDoDesenho()
+    If Len(ident) > 0 Then
+        r = ColarLinhaDoId(ident)
         If r > 0 Then
             If Numero(Celula(r, cComp)) > 0 Then comp = Numero(Celula(r, cComp))
             If Numero(Celula(r, cLarg)) > 0 Then larg = Numero(Celula(r, cLarg))
-            desc = Celula(r, cDesc)
-            Exit For
+            desc = "ID " & ident & vbLf & Celula(r, cDesc)
         End If
-    Next k
+    End If
     ' Comprimento na horizontal; proporção limitada para caber e ser clicável.
     w = DES_LARG
     h = w * larg / comp
@@ -452,9 +489,10 @@ End Sub
 Private Sub Atualizar()
     Dim k As Variant, r As Long, i As Long, q As Long
     Dim soma As Double, partes As String, alvo As Double, espTxt As String, cod As String
-    Dim semEsp As Boolean, avaliacao As String
+    Dim semEsp As Boolean, avaliacao As String, selecionado As String, qtCorte As String
     If mAPreparar Then Exit Sub
 
+    If lstConjunto.ListIndex >= 0 Then selecionado = CStr(lstConjunto.List(lstConjunto.ListIndex, 0))
     lstConjunto.Clear
     alvo = -1
     For Each k In mConj.Keys
@@ -463,6 +501,8 @@ Private Sub Atualizar()
         lstConjunto.AddItem CStr(k)
         i = lstConjunto.ListCount - 1
         lstConjunto.List(i, 1) = q
+        If Len(qtCorte) > 0 Then qtCorte = qtCorte & ", "
+        qtCorte = qtCorte & "ID " & CStr(k) & " = " & q * NumConjuntos()
         If r > 0 Then
             lstConjunto.List(i, 2) = Celula(r, cDesc)
             lstConjunto.List(i, 3) = Celula(r, cEspMat)
@@ -494,6 +534,19 @@ Private Sub Atualizar()
         lblEsp.Caption = "Esp no iMos: " & alvo & " mm  (é a que manda)" & vbLf & _
                          "Materiais: " & partes & " = aprox. " & soma & " mm" & vbLf & avaliacao
     End If
+    If mConj.Count > 0 Then
+        lblEsp.Caption = lblEsp.Caption & vbLf & "Qt a cortar (" & NumConjuntos() & " conjunto(s)): " & qtCorte
+    End If
+
+    ' Voltar a selecionar a linha que estava selecionada (o desenho segue-a).
+    If Len(selecionado) > 0 Then
+        For i = 0 To lstConjunto.ListCount - 1
+            If CStr(lstConjunto.List(i, 0)) = selecionado Then
+                lstConjunto.ListIndex = i
+                Exit For
+            End If
+        Next i
+    End If
 
     DesenharPeca
 
@@ -511,10 +564,6 @@ Private Sub Estado(ByVal texto As String)
     lblEstado.Caption = texto
 End Sub
 
-Private Function QuantidadeEscolhida() As Long
-    QuantidadeEscolhida = CLng(Val(txtQt.Text))
-    If QuantidadeEscolhida < 1 Then QuantidadeEscolhida = 1
-End Function
 
 Private Sub JuntarId(ByVal ident As String, ByVal q As Long)
     If Len(ident) = 0 Then Exit Sub
@@ -534,6 +583,7 @@ Private Sub Repor()
     chkRaio.Value = False
     txtMaisComp.Text = EXCEDENTE_POR_DEFEITO
     txtMaisLarg.Text = EXCEDENTE_POR_DEFEITO
+    txtConjuntos.Text = "1"
 End Sub
 
 '====================================================================
@@ -552,7 +602,7 @@ End Sub
 
 Private Sub btnAdicionar_Click()
     Dim i As Long, n As Long, q As Long
-    q = QuantidadeEscolhida()
+    q = 1
     For i = 0 To lstPecas.ListCount - 1
         If lstPecas.Selected(i) Then
             JuntarId CStr(lstPecas.List(i, 0)), q
@@ -570,7 +620,7 @@ End Sub
 
 Private Sub lstPecas_DblClick(ByVal Cancel As MSForms.ReturnBoolean)
     If lstPecas.ListIndex < 0 Then Exit Sub
-    JuntarId CStr(lstPecas.List(lstPecas.ListIndex, 0)), QuantidadeEscolhida()
+    JuntarId CStr(lstPecas.List(lstPecas.ListIndex, 0)), 1
     Estado "ID " & lstPecas.List(lstPecas.ListIndex, 0) & " junto ao conjunto."
     Atualizar
 End Sub
@@ -609,6 +659,15 @@ Private Sub btnTirar_Click()
     If Len(ident) = 0 Then Exit Sub
     If mConj.Exists(ident) Then mConj.Remove ident
     Estado "ID " & ident & " tirado do conjunto."
+    Atualizar
+End Sub
+
+Private Sub lstConjunto_Click()
+    If mAPreparar Then Exit Sub
+    DesenharPeca
+End Sub
+
+Private Sub txtConjuntos_Change()
     Atualizar
 End Sub
 
@@ -662,7 +721,7 @@ Private Sub btnGravar_Click()
     End If
     cod = CodigoAtual()
     msg = ColarGravar(mConj, cod, mCodigoAntigo, True, CBool(chkMudarQt.Value), _
-                      Trim$(txtMaisComp.Text), Trim$(txtMaisLarg.Text))
+                      Trim$(txtMaisComp.Text), Trim$(txtMaisLarg.Text), NumConjuntos())
     If Len(msg) = 0 Then
         Estado "Nada foi gravado."
         Exit Sub
@@ -672,22 +731,6 @@ Private Sub btnGravar_Click()
     PreencherPecas
     Atualizar
     Estado msg
-End Sub
-
-Private Sub btnLimpar_Click()
-    Dim n As Long
-    If mConj.Count = 0 And Len(mCodigoAntigo) = 0 Then
-        Estado "Não há peças no conjunto."
-        Exit Sub
-    End If
-    If MsgBox("Apagar o código da coluna Colar das peças deste conjunto?" & vbCrLf & _
-              "(a Qt e o +comp/+Larg ficam como estão)", _
-              vbYesNo + vbQuestion + vbDefaultButton2, "Colar") <> vbYes Then Exit Sub
-    n = ColarLimpar(mConj, mCodigoAntigo)
-    Repor
-    PreencherPecas
-    Atualizar
-    Estado "Código tirado de " & n & " linha(s). Reveja a Qt e o +comp/+Larg dessas peças."
 End Sub
 
 Private Sub btnVerificar_Click()

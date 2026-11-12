@@ -364,8 +364,9 @@ End Function
 ' Escreve o código em todas as linhas do conjunto e tira-o das linhas que tinham
 ' o código antigo e já não são do conjunto. Devolve o texto para a linha de estado,
 ' ou "" quando não gravou (IDs em falta ou o utilizador disse que não).
-'   mudarQt  : a Qt de cada peça do conjunto passa a ser quantas entram nele, quando
-'              são 2 ou mais (5+5 -> Qt 2): é o que o Cut-Rite tem de cortar.
+'   mudarQt  : a Qt de cada peça passa a ser peças dela no conjunto x conjuntos
+'              (47+47 e 8 conjuntos -> Qt 16; 47+48 e 6 -> Qt 6 e 6): é o que o
+'              Cut-Rite tem de cortar para, depois de colar, haver os conjuntos pedidos.
 '   maisComp / maisLarg : excedente de corte para as colunas +comp e +Larg (por
 '              defeito 20 no menu); vazio = não mexe nessas colunas.
 Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
@@ -373,7 +374,8 @@ Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
                             Optional ByVal perguntar As Boolean = True, _
                             Optional ByVal mudarQt As Boolean = False, _
                             Optional ByVal maisComp As String = "", _
-                            Optional ByVal maisLarg As String = "") As String
+                            Optional ByVal maisLarg As String = "", _
+                            Optional ByVal conjuntos As Long = 1) As String
     Dim lo As ListObject, colId As Long, colColar As Long, r As Long
     Dim colQt As Long, colMaisComp As Long, colMaisLarg As Long
     Dim idTxt As String, atual As String, k As Variant
@@ -428,10 +430,9 @@ Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
                 .Value = codigo
             End With
             If mudarQt And colQt > 0 Then
-                If CLng(conj(idTxt)) >= 2 Then
-                    lo.DataBodyRange.Cells(r, colQt).Value = CLng(conj(idTxt))
-                    qts = qts & IIf(Len(qts) > 0, ", ", "") & "ID " & idTxt & " = " & CLng(conj(idTxt))
-                End If
+                If conjuntos < 1 Then conjuntos = 1
+                lo.DataBodyRange.Cells(r, colQt).Value = CLng(conj(idTxt)) * conjuntos
+                qts = qts & IIf(Len(qts) > 0, ", ", "") & "ID " & idTxt & " = " & CLng(conj(idTxt)) * conjuntos
             End If
             If Len(Trim$(maisComp)) > 0 And colMaisComp > 0 Then
                 lo.DataBodyRange.Cells(r, colMaisComp).Value = Val(Replace(maisComp, ",", "."))
@@ -449,7 +450,7 @@ Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
     Next r
 
     ColarGravar = "Código «" & codigo & "» gravado em " & n & " linha(s): ID " & escritos & "."
-    If Len(qts) > 0 Then ColarGravar = ColarGravar & " Qt: " & qts & "."
+    If Len(qts) > 0 Then ColarGravar = ColarGravar & " Qt (" & conjuntos & " conjunto(s)): " & qts & "."
     If Len(Trim$(maisComp)) > 0 Or Len(Trim$(maisLarg)) > 0 Then
         ColarGravar = ColarGravar & " +comp " & maisComp & " / +Larg " & maisLarg & "."
     End If

@@ -3447,3 +3447,59 @@ Guião de teste:
    com as arestas C1/C2 castanhas e a CNC no fim marcada.
 10. «Copia Listagem CUT_RITE» / Enviar CUT-RITE (com a coluna Colar já criada no Cut-Rite).
     Esperado: a etiqueta mostra a medida da peça e a de corte (+20).
+
+### Coluna «Colar», 3.ª ronda: nº de conjuntos (2026-11-12)
+
+Pedidos do Paulo, no menu Colar:
+- **Nº de conjuntos (já colados).** Campo novo, a 1 por defeito: é o produto final, já colado.
+  A **Qt (coluna E)** de cada peça passa a ser peças dela no conjunto x nº de conjuntos.
+  - `47+47` com 8 conjuntos → Qt 16 no ID 47.
+  - `47+48` com 6 conjuntos → Qt 6 no ID 47 e Qt 6 no ID 48.
+
+  A opção «Atualizar a Qt (coluna E) para o corte» vem marcada; desmarcada, a Qt não mexe.
+  Ao lado do conjunto aparece «Qt a cortar (N conjunto(s)): ID … = …». Ao editar um conjunto
+  já gravado, o nº de conjuntos lê-se da Qt (Qt 16 em `47+47` → 8 conjuntos).
+- **Desenho da peça:** mostra a linha **selecionada** no quadro 2 (antes era sempre a 1.ª),
+  com o ID e a descrição. Sem nada selecionado, mostra a 1.ª.
+- **Saiu o campo «Quantas de cada»:** cada peça entra 1 vez; para a mesma peça entrar mais
+  vezes usa-se **+1** no quadro 2.
+- **Saiu o botão «Tirar o código destas peças».**
+
+Atenção: com a opção marcada, a Qt fica **sempre** peças no conjunto x conjuntos, também
+com 1 conjunto. Uma peça com Qt 2 no iMos, numa colagem `47+48`, fica com Qt 1 se o nº de
+conjuntos ficar a 1: pôr 2.
+
+Correção ao lado: desde 12-11 o Excel abre os `.xltm` como livro novo mesmo com
+`Editable=True`, e o «Gravar» ia parar a Documentos sem mexer no modelo. Os scripts
+`criar_modelo_lista_material_colar.py` e `atualizar_macros_modelo_lista_material.py` passam a
+gravar com `SaveAs` no próprio modelo.
+
+Confirmado numa cópia (obra 0993_04):
+- o projeto VBA compila;
+- 7+7 com 8 conjuntos → Qt 16; 8+9 com 6 conjuntos → Qt 6 e 6;
+- 1+2 editado para 3 conjuntos → Qt 3 e 3, e ao reabrir o menu o campo mostra 3;
+- o desenho passa do ID 1 para o ID 2 ao selecionar a 2.ª linha;
+- o Cut-Rite recebe as 24 colunas.
+
+O modelo `Lista_Material_IMOS_MARTELO_COLAR.xltm` do servidor foi refeito; o de 06-11 ficou
+ao lado, como `..._COLAR_anterior_20261112_153504.xltm`. As listas feitas antes têm o menu
+antigo: criar outra vez a lista para testar.
+
+Guião de teste:
+
+1. Produção → a obra de teste → Funções → «Lista Material com coluna Colar (ensaio)…» →
+   «Criar nova (substitui a atual)» → passo 1 (CSV) e passo 2 (AUTOMATION).
+2. Duplo clique na Colar de uma peça (ex.: ID 47). No quadro 2, selecionar o 47 e clicar
+   **+1**: o código fica «47+47».
+3. Em «Nº de conjuntos (já colados)», escrever **8**. Esperado: «Qt a cortar (8
+   conjunto(s)): ID 47 = 16».
+4. **Gravar**. Esperado: na folha, a Qt do ID 47 fica **16** e a Colar fica «47+47».
+5. Novo conjunto: duplo clique na Colar do ID 48. Na lista de cima, selecionar o ID 49 →
+   **Juntar ao conjunto**: fica «48+49».
+6. Clicar no 48 e depois no 49, no quadro 2. Esperado: o desenho muda para a peça
+   selecionada (ID, descrição e medidas).
+7. Nº de conjuntos **6** → Gravar. Esperado: Qt **6** no ID 48 e Qt **6** no ID 49.
+8. Duplo clique outra vez na Colar do ID 47. Esperado: o menu abre com «47+47» e o nº de
+   conjuntos a **8**.
+9. Confirmar que já não há o campo «Quantas de cada» nem o botão «Tirar o código destas
+   peças».

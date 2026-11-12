@@ -67,6 +67,7 @@ XL_TO_RIGHT = -4161
 XL_FORMAT_FROM_LEFT_OR_ABOVE = 0
 XL_LEFT = -4131
 XL_VALIDATE_INPUT_ONLY = 0
+XL_TEMPLATE_COM_MACROS = 53  # xlOpenXMLTemplateMacroEnabled (.xltm)
 
 
 def guardar_anterior(destino: Path) -> Path | None:
@@ -207,7 +208,10 @@ def criar(origem: Path, destino: Path) -> list[str]:
         codigo_folha = _componente(projeto, str(folha.CodeName))
         _escrever_codigo(codigo_folha, PASTA_COLAR / CODIGO_DA_FOLHA)
         relatorio.append(f"VBA: duplo clique na folha ({folha.CodeName})")
-        livro.Save()
+        # SaveAs e não Save: desde 12-11-2026 o Excel abre o .xltm como livro NOVO
+        # («..._COLAR1») mesmo com Editable=True, e o Save gravava-o em Documentos.
+        # O SaveAs grava sempre no modelo COLAR, como modelo com macros.
+        livro.SaveAs(str(destino), FileFormat=XL_TEMPLATE_COM_MACROS)
         livro.Close(False)
         livro = None
 

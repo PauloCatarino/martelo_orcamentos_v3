@@ -166,7 +166,10 @@ def atualizar_modelo(modelo: Path, modulos: tuple[str, ...] = MODULOS) -> list[s
                 modulo.DeleteLines(1, modulo.CountOfLines)
             modulo.AddFromString(novo)
             trocados.append(nome)
-        livro.Save()
+        # SaveAs e não Save: desde 12-11-2026 o Excel abre o .xltm como livro NOVO
+        # mesmo com Editable=True, e o Save gravava-o em Documentos sem tocar no
+        # modelo. 53 = xlOpenXMLTemplateMacroEnabled (.xltm).
+        livro.SaveAs(str(modelo), FileFormat=53)
         fechar(livro)
         livro = None
 
