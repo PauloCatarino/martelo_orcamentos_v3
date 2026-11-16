@@ -152,19 +152,20 @@ def test_sourceid_vai_para_a_coluna_a_seguir_a_tabela():
     ) == 27
 
 
-# ---- Martelo: opção nas Funções -------------------------------------------
+# ---- Martelo: o botão «Lista Material_IMOS» usa o modelo COLAR (16-11-2026) -------
 
 
-def test_opcao_lista_com_colar_nas_funcoes():
+def test_botao_lista_material_usa_o_modelo_colar():
     from app.ui.pages.producao_page import ProducaoPage
 
     init = inspect.getsource(ProducaoPage.__init__)
-    assert '"Lista Material com coluna Colar (ensaio)…", self' in init
-    assert "self.lista_colar_action.setToolTip(" in init
-    assert "self._lista_material_imos(modelo=TEMPLATE_FILENAME_COLAR)" in init
-    assert "self.funcoes_menu.addAction(self.lista_colar_action)" in init
-    # O botão de sempre continua no modelo de sempre.
+    # O ensaio das Funções saiu: passou a ser o botão principal.
+    assert "lista_colar_action" not in init
+    assert "Lista Material com coluna Colar (ensaio)" not in init
     assert "self.lista_material_button.clicked.connect(self._lista_material_imos)" in init
+    assert "TEMPLATE_FILENAME_COLAR" in init  # na dica do botão
+    assinatura = inspect.signature(ProducaoPage._lista_material_imos)
+    assert assinatura.parameters["modelo"].default == "Lista_Material_IMOS_MARTELO_COLAR.xltm"
     fluxo = inspect.getsource(ProducaoPage._lista_material_imos)
     assert fluxo.count("template_filename=modelo") == 2
 
@@ -175,7 +176,7 @@ def test_botao_de_sempre_ignora_o_checked_do_clicked():
     assinatura = inspect.signature(ProducaoPage._lista_material_imos)
     modelo = assinatura.parameters["modelo"]
     assert modelo.kind is inspect.Parameter.KEYWORD_ONLY
-    assert modelo.default == "Lista_Material_IMOS_MARTELO.xltm"
+    assert modelo.default == "Lista_Material_IMOS_MARTELO_COLAR.xltm"
 
 
 def test_modelo_colar_pelo_nome(session, tmp_path):

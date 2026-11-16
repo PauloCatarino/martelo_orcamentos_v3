@@ -30,6 +30,8 @@ Option Explicit
 
 Public Const COLAR_FOLHA As String = "LISTAGEM_CUT_RITE"
 Public Const COLAR_TABELA As String = "Tabela_Cut_Rite"
+' Nas Notas, quando as orlas são só depois de colar (16-11-2026).
+Public Const COLAR_NOTA_ORLA As String = "Orla depois de colar: "
 
 ' Roda do rato nas listas do menu (ver «RODA DO RATO» no fim do módulo)
 Public Type COLAR_PONTO
@@ -620,4 +622,97 @@ Public Function ColarRodaGancho(ByVal nCode As Long, ByVal wParam As LongPtr, By
         End If
     End If
     ColarRodaGancho = CallNextHookEx(mGanchoRoda, nCode, wParam, lParam)
+End Function
+
+'--------------------------------------------------------------------
+' Orlas ANTES de colar (16-11-2026, pedido do Paulo)
+'--------------------------------------------------------------------
+' As 4 colunas de orla da tabela (Orla ESQ / DIR / CIMA / BAIXO).
+Private Function ColarColunasOrla() As Variant
+    ColarColunasOrla = Array(ColarIndice("ORLAESQ"), ColarIndice("ORLADIR"), _
+                             ColarIndice("ORLACIMA"), ColarIndice("ORLABAIXO"))
+End Function
+
+' Uma orla escrita a sério (não vazia, não "0").
+Private Function ColarTemOrla(ByVal v As Variant) As Boolean
+    Dim s As String
+    If IsError(v) Then Exit Function
+    s = UCase$(Trim$(Replace(CStr(v), Chr$(160), " ")))
+    ColarTemOrla = (Len(s) > 0 And s <> "0" And s <> "(EM BRANCO)" And s <> "(BLANK)")
+End Function
+
+' As orlas que as peças do conjunto já têm nas colunas Orla (antes de colar),
+' uma linha por peça: "ID 5: ESQ PVC_1.0_X, CIMA PVC_1.0_X". Vazio = nenhuma.
+Public Function ColarOrlasAntes(ByVal conj As Object) As String
+    Dim lo As ListObject, colId As Long, cols As Variant, nomes As Variant
+    Dim r As Long, i As Long, idTxt As String, linha As String, v As Variant
+    Set lo = ColarTabela()
+    If lo Is Nothing Then Exit Function
+    If lo.DataBodyRange Is Nothing Then Exit Function
+    colId = ColarIndice("ID")
+    If colId = 0 Then Exit Function
+    cols = ColarColunasOrla()
+    nomes = Array("ESQ", "DIR", "CIMA", "BAIXO")
+    For r = 1 To lo.ListRows.Count
+        idTxt = ColarIdDaLinha(lo, r, colId)
+        If Len(idTxt) > 0 Then
+            If conj.Exists(idTxt) Then
+                linha = ""
+                For i = 0 To 3
+                    If cols(i) > 0 Then
+                        v = lo.DataBodyRange.Cells(r, cols(i)).Value
+                        If ColarTemOrla(v) Then
+                            linha = linha & IIf(Len(linha) > 0, ", ", "") & nomes(i) & " " & Trim$(CStr(v))
+                        End If
+                    End If
+                Next i
+                If Len(linha) > 0 Then ColarOrlasAntes = ColarOrlasAntes & vbCrLf & "   ID " & idTxt & ": " & linha
+            End If
+        End If
+    Next r
+End Function
+
+' Orlas SÓ depois de colar: limpa as colunas Orla das peças do conjunto.
+' A orla que lá estava (a 1.ª) fica escrita nas Notas, "Orla depois de colar: X",
+' para o ResumoOrlas e a fábrica saberem que orla pôr depois de colar.
+' Devolve quantas peças ficaram sem as orlas.
+Public Function ColarTirarOrlasAntes(ByVal conj As Object) As Long
+    Dim lo As ListObject, colId As Long, colNotas As Long, cols As Variant
+    Dim r As Long, i As Long, idTxt As String, orla As String, v As Variant
+    Dim notas As String, marca As String
+    Set lo = ColarTabela()
+    If lo Is Nothing Then Exit Function
+    If lo.DataBodyRange Is Nothing Then Exit Function
+    colId = ColarIndice("ID")
+    colNotas = ColarIndice("NOTAS")
+    If colId = 0 Then Exit Function
+    cols = ColarColunasOrla()
+    For r = 1 To lo.ListRows.Count
+        idTxt = ColarIdDaLinha(lo, r, colId)
+        If Len(idTxt) > 0 Then
+            If conj.Exists(idTxt) Then
+                orla = ""
+                For i = 0 To 3
+                    If cols(i) > 0 Then
+                        v = lo.DataBodyRange.Cells(r, cols(i)).Value
+                        If ColarTemOrla(v) Then
+                            If Len(orla) = 0 Then orla = Trim$(CStr(v))
+                            lo.DataBodyRange.Cells(r, cols(i)).ClearContents
+                        End If
+                    End If
+                Next i
+                If Len(orla) > 0 Then
+                    ColarTirarOrlasAntes = ColarTirarOrlasAntes + 1
+                    If colNotas > 0 Then
+                        notas = Trim$(CStr(lo.DataBodyRange.Cells(r, colNotas).Value))
+                        marca = COLAR_NOTA_ORLA & orla
+                        If InStr(1, notas, COLAR_NOTA_ORLA, vbTextCompare) = 0 Then
+                            If Len(notas) > 0 Then notas = notas & " | "
+                            lo.DataBodyRange.Cells(r, colNotas).Value = notas & marca
+                        End If
+                    End If
+                End If
+            End If
+        End If
+    Next r
 End Function

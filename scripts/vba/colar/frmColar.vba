@@ -28,6 +28,9 @@ Option Explicit
 '  4.ª ronda (12-11-2026, teste na obra 1854):
 '    - aviso ao gravar O4L com peças de Comp ou Larg diferentes (pode ignorar);
 '    - coluna Notas na lista das peças; roda do rato nas duas listas (modColar);
+'  6.ª ronda (16-11-2026): ao gravar um código com orla depois de colar, se as peças
+'    já têm orla nas colunas Orla, pergunta (frmColarOrlas): manter as orlas antes e
+'    depois de colar, ou só depois (limpa as orlas das peças; a orla fica nas Notas).
 '    - Comp e Larg no quadro 2.
 '  5.ª ronda (12-11-2026): só se orla o lado em que as peças batem certo — os
 '    comprimentos (OC/OR) se o Comp é igual em todas, as larguras (OL) se a Larg é
@@ -792,6 +795,20 @@ Private Sub btnGravar_Click()
             Exit Sub
         End If
     End If
+    ' As peças já têm orla nas colunas Orla e o código leva orla depois de colar:
+    ' manter as duas, ou só depois de colar (limpa as orlas das peças)? (16-11-2026)
+    Dim orlasAntes As String, tirarOrlas As Boolean, escolha As Long
+    If NComp() > 0 Or NLarg() > 0 Or chkRaio.Value Then
+        orlasAntes = ColarOrlasAntes(mConj)
+        If Len(orlasAntes) > 0 Then
+            escolha = PerguntarOrlasAntes(orlasAntes)
+            If escolha = 0 Then
+                Estado "Não gravado: escolha o que fazer às orlas das peças antes de colar."
+                Exit Sub
+            End If
+            tirarOrlas = (escolha = 2)
+        End If
+    End If
     cod = CodigoAtual()
     msg = ColarGravar(mConj, cod, mCodigoAntigo, True, CBool(chkMudarQt.Value), _
                       Trim$(txtMaisComp.Text), Trim$(txtMaisLarg.Text), NumConjuntos())
@@ -799,12 +816,28 @@ Private Sub btnGravar_Click()
         Estado "Nada foi gravado."
         Exit Sub
     End If
+    If tirarOrlas Then
+        msg = msg & " Orlas só depois de colar: limpas as orlas de " & ColarTirarOrlasAntes(mConj) & _
+              " peça(s) (a orla ficou nas Notas)."
+    ElseIf Len(orlasAntes) > 0 Then
+        msg = msg & " Orlas antes e depois de colar."
+    End If
     ' Pronto para o conjunto seguinte.
     Repor
     PreencherPecas
     Atualizar
     Estado msg
 End Sub
+
+' 1 = manter as orlas antes e depois de colar; 2 = só depois (limpa); 0 = não gravar.
+Private Function PerguntarOrlasAntes(ByVal orlasAntes As String) As Long
+    Dim f As frmColarOrlas
+    Set f = New frmColarOrlas
+    f.Preparar orlasAntes
+    f.Show vbModal
+    PerguntarOrlasAntes = f.Escolha
+    Unload f
+End Function
 
 Private Sub btnVerificar_Click()
     Dim problemas As String

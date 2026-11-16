@@ -184,9 +184,40 @@ def test_duplo_clique_na_folha_e_o_resto_do_codigo_igual():
     assert "Application.CalculateFull" in codigo  # o que já lá estava
 
 
+def test_menu_6a_ronda_orlas_antes_de_colar_manter_ou_so_depois():
+    menu = _ler(COLAR / "frmColar.vba")
+    # Só pergunta quando o código leva orla depois de colar e as peças já têm orla.
+    assert "If NComp() > 0 Or NLarg() > 0 Or chkRaio.Value Then" in menu
+    assert "orlasAntes = ColarOrlasAntes(mConj)" in menu
+    assert "escolha = PerguntarOrlasAntes(orlasAntes)" in menu
+    # Limpa depois de gravar o código (se não gravou, as orlas ficam).
+    assert menu.index("msg = ColarGravar(") < menu.index("ColarTirarOrlasAntes(mConj)")
+    assert "Dim f As frmColarOrlas" in menu and "f.Show vbModal" in menu
+
+    form = _ler(COLAR / "frmColarOrlas.vba")
+    assert "Foi detetado que as peças contêm orla antes de colar" in form
+    assert '"Manter as orlas antes e depois de colar"' in form
+    assert '"Orlas só depois de colar (limpa as orlas das peças)"' in form
+    assert form.count(".ControlTipText =") == 3  # dica em todos os botões
+    assert "lblEstado" in form  # linha de estado
+    assert "Escolha = 1" in form and "Escolha = 2" in form and "Escolha = 0" in form
+
+    modulo = _ler(COLAR / "modColar.bas")
+    assert 'Public Const COLAR_NOTA_ORLA As String = "Orla depois de colar: "' in modulo
+    assert modulo.index("Public Const COLAR_NOTA_ORLA") < modulo.index("Public Sub AbrirMenuColar()")
+    assert "Public Function ColarOrlasAntes(ByVal conj As Object) As String" in modulo
+    assert "Public Function ColarTirarOrlasAntes(ByVal conj As Object) As Long" in modulo
+    assert 'ColarIndice("ORLAESQ"), ColarIndice("ORLADIR")' in modulo
+
+    # O ResumoOrlas vai buscar a orla depois de colar às Notas quando as colunas foram limpas.
+    resumo = _ler(COLAR / "modResumoOrlas.bas")
+    assert 'idxNotas = GetColIndexByNorm(lo, "NOTAS")' in resumo
+    assert 'p = InStr(1, notas, "Orla depois de colar:", vbTextCompare)' in resumo
+
+
 def test_modelo_de_sempre_nao_recebe_os_modulos_do_colar():
     atualizar = _script("atualizar_macros_modelo_lista_material")
-    for nome in ("modColar", "frmColar", "Copia_List_Soft_Cut_Rite"):
+    for nome in ("modColar", "frmColar", "frmColarOrlas", "Copia_List_Soft_Cut_Rite"):
         assert nome not in atualizar.MODULOS
 
 

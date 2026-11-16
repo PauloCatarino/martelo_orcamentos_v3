@@ -3675,3 +3675,59 @@ Guião de teste (obra 1854):
 5. Um conjunto **com** orla nas colunas (ex.: ID com PVC, `X+X_O4L`). Esperado: a linha
    `..._38.MM | PVC_...` com os ml depois de colar. As orlas das colunas ficam no material de 19.
 6. Numa peça sem código com Esp do iMos ≠ Esp.Mat. Esperado: a linha `..._30.MM` como sempre.
+
+### Coluna «Colar», 6.ª ronda: orlas antes de colar; a Colar passa a ser a Lista Material de todos (2026-11-16)
+
+Pedido do Paulo.
+
+**1. Aviso das orlas antes de colar.** Ao «Gravar» no menu Colar, aparece uma janela nova
+(`frmColarOrlas`) quando o código leva orla **depois** de colar (O4L, OC, OL, OR) e as peças do
+conjunto já têm orla nas colunas Orla ESQ/DIR/CIMA/BAIXO:
+- A janela diz: «Foi detetado que as peças contêm orla antes de colar», com a lista por peça
+  (ex. `ID 7: ESQ PVC_1.0_BRANCO`), e pergunta «Pretende manter as orlas nas peças antes de colar
+  e depois de colar?».
+- **«Manter as orlas antes e depois de colar»:** grava o código e as orlas ficam (como até agora).
+- **«Orlas só depois de colar (limpa as orlas das peças)»:** grava o código e **apaga as 4
+  colunas Orla** das peças do conjunto. A orla que lá estava fica nas **Notas**: `Orla depois de
+  colar: PVC_1.0_BRANCO`. Assim, o ResumoOrlas e a fábrica sabem que orla pôr depois de colar.
+  Não se repete se gravar outra vez.
+- **«Cancelar»** (ou Esc, ou o X da janela): não grava nada.
+- **Sem orla depois de colar** («Sem orla»), ou peças sem orla nas colunas: não pergunta.
+
+O **ResumoOrlas** vai buscar a orla depois de colar às colunas Orla. Se estiverem vazias, usa a
+das Notas. Só se não houver em nenhuma é que a linha `_38.MM` fica com o Nome_Orlas vazio.
+
+**2. O botão «Lista Material_IMOS» usa o modelo COLAR.** O botão principal do menu Produção
+mantém o nome, mas cria a lista com `Lista_Material_IMOS_MARTELO_COLAR.xltm`. A opção «Lista
+Material com coluna Colar (ensaio)…» saiu das Funções. O modelo de sempre fica no servidor, mas o
+Martelo já não o usa nesse botão. A «Lista Material da base iMos (ensaio)» continua com o modelo
+de sempre.
+- **Atenção:** os colegas só veem o botão novo **com uma versão nova do Martelo**. A janela das
+  orlas já está no modelo COLAR do servidor e serve para as listas novas criadas a partir de agora.
+- **O Cut-Rite** recebe a coluna Colar (24 colunas) em todas as listas novas: tem de ter essa
+  coluna na lista de peças.
+
+**Confirmado numa cópia da obra 1854** (o projeto VBA compila):
+- `ColarOrlasAntes` lista as orlas do ID 7 e do ID 8, e nada numa peça sem orla.
+- A janela devolve «Manter» com Enter e «Cancelar» com Esc.
+- `7+8_O4L` com «só depois»: as orlas das duas peças ficaram vazias e as Notas com `Orla depois
+  de colar: PVC_1.0_BRANCO`. À 2.ª vez não se repete.
+- O ResumoOrlas dá `AGL_MLM_BRANCO_B3768/SC_38.MM | PVC_1.0_BRANCO`, com a orla tirada das Notas.
+
+Modelo COLAR do servidor refeito; o anterior ficou `..._COLAR_anterior_20261116_182236.xltm`.
+
+Guião de teste:
+
+1. Martelo → Produção → obra de teste (ex. 1854) → botão **«Lista Material_IMOS»** → «Criar nova
+   (substitui a atual)» → passos 1, 2, 3. Esperado: a LISTAGEM_CUT_RITE tem a coluna **Colar** a
+   seguir à CNC_2 e o botão «Colar». Funções já não tem «Lista Material com coluna Colar (ensaio)».
+2. No Excel, botão «Colar» → juntar 2 peças **com orla** nas colunas Orla (ex. ID 7 e ID 8) → «4
+   lados (O4L)» → Gravar. Esperado: a janela «Colar - orlas antes de colar» com as orlas de cada ID.
+3. «Cancelar». Esperado: nada gravado (a coluna Colar das duas peças continua vazia).
+4. Gravar outra vez → «Manter as orlas antes e depois de colar». Esperado: código `7+8_O4L` nas
+   duas peças, orlas iguais, e na linha de estado «Orlas antes e depois de colar.».
+5. Escolher as mesmas peças → Gravar → «Orlas só depois de colar». Esperado: as 4 colunas Orla
+   das duas peças vazias e nas Notas `Orla depois de colar: PVC_...`.
+6. «Calculo Orlas». Esperado: as orlas antes de colar dessas peças já não contam. Há uma linha
+   `..._38.MM` com a orla das Notas e os ml depois de colar.
+7. Um conjunto com «Sem orla», ou de peças sem orla. Esperado: grava sem a janela.

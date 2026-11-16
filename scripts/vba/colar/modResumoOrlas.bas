@@ -17,7 +17,9 @@ Option Explicit
 '     contam UMA vez por conjunto: nº de conjuntos = Qt do 1.º ID do código / peças
 '     desse ID no conjunto (47+47 com Qt 16 -> 8; 47+48 com Qt 6 e 6 -> 6). Medidas:
 '     as comuns às peças (se não baterem, a maior + aviso); OR conta 1 comprimento;
-'     orla = a 1.ª orla das colunas Orla das peças do conjunto (sem nenhuma, a linha
+'     orla = a 1.ª orla das colunas Orla das peças do conjunto, ou a das Notas
+'     ("Orla depois de colar: X", quando o menu Colar limpou as orlas, 16-11-2026)
+'     (sem nenhuma, a linha
 '     aparece com o Nome_Orlas vazio para o utilizador escrever, e o que ele escrever
 '     fica nas vezes seguintes);
 '   - material colado no resumo: família + espessura depois de colar (soma das Esp.Mat
@@ -137,6 +139,7 @@ Public Sub GERAR_ResumoOrlas()
     Dim idxCliente As Long, idxEncPhc As Long, idxRefCliente As Long
     Dim idxID As Long   ' opcional
     Dim idxColar As Long ' modelo COLAR
+    Dim idxNotas As Long ' modelo COLAR: "Orla depois de colar: X" (16-11-2026)
     Dim dictSets As Object
 
     Dim dict As Object
@@ -186,6 +189,7 @@ Public Sub GERAR_ResumoOrlas()
 
     idxID = GetColIndexByNorm(lo, "ID")
     idxColar = GetColIndexByNorm(lo, "COLAR")
+    idxNotas = GetColIndexByNorm(lo, "NOTAS")
 
     If idxMat = 0 Or idxComp = 0 Or idxLarg = 0 Or idxQt = 0 Then
         MsgBox "Não encontrei colunas essenciais (Material/Comp/Larg/Qt) na Tabela_Cut_Rite.", vbExclamation
@@ -282,8 +286,11 @@ Public Sub GERAR_ResumoOrlas()
             AccOrla dict, material, oDir, compMM, qt, espAntes
             AccOrla dict, material, oCima, largMM, qt, espAntes
             AccOrla dict, material, oBaixo, largMM, qt, espAntes
+            Dim notasTxt As String
+            notasTxt = ""
+            If idxNotas > 0 Then notasTxt = CleanText(Nz(data(r, idxNotas), ""))
             GuardarLinhaColagem dictSets, colarTxt, r, idVal, material, compMM, largMM, qt, _
-                                espPeca, espMat, oEsq, oDir, oCima, oBaixo
+                                espPeca, espMat, oEsq, oDir, oCima, oBaixo, notasTxt
         Else
             ' acumular ML
             AccOrla dict, materialResumo, oEsq, compMM, qt, espPeca
@@ -425,8 +432,9 @@ Private Sub GuardarLinhaColagem(ByVal dictSets As Object, ByVal codigo As String
                                 ByVal idVal As String, ByVal material As String, ByVal compMM As Double, _
                                 ByVal largMM As Double, ByVal qt As Double, ByVal espFinal As Double, _
                                 ByVal espMat As Double, ByVal o1 As Variant, ByVal o2 As Variant, _
-                                ByVal o3 As Variant, ByVal o4 As Variant)
-    Dim orla As String
+                                ByVal o3 As Variant, ByVal o4 As Variant, _
+                                Optional ByVal notas As String = "")
+    Dim orla As String, p As Long, resto As String
     If IsOrlaValidaParaCalculo(o1) Then
         orla = UCase$(CleanText(o1))
     ElseIf IsOrlaValidaParaCalculo(o2) Then
@@ -435,6 +443,17 @@ Private Sub GuardarLinhaColagem(ByVal dictSets As Object, ByVal codigo As String
         orla = UCase$(CleanText(o3))
     ElseIf IsOrlaValidaParaCalculo(o4) Then
         orla = UCase$(CleanText(o4))
+    End If
+    ' Orlas só depois de colar (menu Colar, 16-11-2026): as colunas Orla foram limpas
+    ' e a orla ficou nas Notas, "Orla depois de colar: X".
+    If Len(orla) = 0 And Len(notas) > 0 Then
+        p = InStr(1, notas, "Orla depois de colar:", vbTextCompare)
+        If p > 0 Then
+            resto = Trim$(Mid$(notas, p + Len("Orla depois de colar:")))
+            If InStr(resto, "|") > 0 Then resto = Trim$(Left$(resto, InStr(resto, "|") - 1))
+            If InStr(resto, " ") > 0 Then resto = Left$(resto, InStr(resto, " ") - 1)
+            If IsOrlaValidaParaCalculo(resto) Then orla = UCase$(CleanText(resto))
+        End If
     End If
     If Not dictSets.Exists(codigo) Then dictSets.Add codigo, New Collection
     dictSets(codigo).Add Array(linha, CleanText(idVal), material, compMM, largMM, qt, espFinal, espMat, orla)

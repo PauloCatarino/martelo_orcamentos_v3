@@ -438,8 +438,14 @@ class ProducaoPage(QWidget):
 
         self.lista_material_button = QPushButton("Lista Material_IMOS")
         self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))
+        # Desde 16-11-2026 o botão usa o modelo COLAR (coluna «Colar» a seguir à
+        # CNC_2 e o menu de colagens), depois dos testes do ensaio: passou a ser a
+        # Lista Material de todos. O modelo de sempre fica no servidor, sem uso aqui.
         self.lista_material_button.setToolTip(
-            "Gerar o Excel 'Lista Material_IMOS' na pasta do processo"
+            "Gerar o Excel 'Lista Material_IMOS' na pasta do processo, com a coluna "
+            "Colar (colagens de peças: duplo clique na coluna Colar ou botão «Colar»). "
+            f"Modelo: «{TEMPLATE_FILENAME_COLAR}». O Cut-Rite recebe a coluna Colar: "
+            "tem de a ter na lista de peças."
         )
         self.lista_material_button.clicked.connect(self._lista_material_imos)
 
@@ -482,23 +488,6 @@ class ProducaoPage(QWidget):
             "da obra não é tocada."
         )
         self.lista_base_imos_action.triggered.connect(self._lista_material_base_imos)
-
-        # ENSAIO (06-11-2026): a Lista Material da obra feita com a cópia do
-        # modelo que tem a coluna «Colar» (colagens, para a fábrica e o Cut-Rite).
-        self.lista_colar_action = QAction(
-            "Lista Material com coluna Colar (ensaio)…", self
-        )
-        self.lista_colar_action.setIcon(icone_ficheiro("icon_excel.ico"))
-        self.lista_colar_action.setToolTip(
-            "ENSAIO: criar a Lista Material da obra com o modelo "
-            f"«{TEMPLATE_FILENAME_COLAR}», igual ao de sempre mais a coluna Colar a "
-            "seguir à CNC_2 e o menu de colagens (duplo clique na coluna Colar). "
-            "O Cut-Rite passa a receber essa coluna: tem de a ter na lista de peças. "
-            "O botão «Lista Material_IMOS» continua a usar o modelo de sempre."
-        )
-        self.lista_colar_action.triggered.connect(
-            lambda: self._lista_material_imos(modelo=TEMPLATE_FILENAME_COLAR)
-        )
 
         self.enviar_cutrite_action = QAction(
             icone_ficheiro("icon_cut_rite.ico"), "Enviar CUT-RITE", self
@@ -615,7 +604,6 @@ class ProducaoPage(QWidget):
         self.funcoes_menu.addAction(self.gerar_listas_imos_action)
         self.funcoes_menu.addAction(self.analisar_lista_material_action)
         self.funcoes_menu.addAction(self.lista_base_imos_action)
-        self.funcoes_menu.addAction(self.lista_colar_action)
         self.funcoes_menu.addSeparator()
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
@@ -2539,12 +2527,12 @@ class ProducaoPage(QWidget):
             diario_bordo.registar_acao("Ligou a pasta que já existia à obra", caminho)
         return caminho
 
-    def _lista_material_imos(self, *_sinal, modelo: str = TEMPLATE_FILENAME) -> None:
+    def _lista_material_imos(self, *_sinal, modelo: str = TEMPLATE_FILENAME_COLAR) -> None:
         """Criar a Lista Material da obra a partir do modelo do Excel.
 
-        ``modelo`` = o ficheiro .xltm: o de sempre (botão «Lista Material_IMOS») ou
-        o de ensaio com a coluna Colar (Funções). ``*_sinal`` apanha o ``checked``
-        que o ``clicked`` do botão manda.
+        ``modelo`` = o ficheiro .xltm; desde 16-11-2026 o botão «Lista Material_IMOS»
+        usa o modelo COLAR (o ensaio das Funções passou a ser o de todos).
+        ``*_sinal`` apanha o ``checked`` que o ``clicked`` do botão manda.
         """
         processo = self._processo_selecionado()
         if processo is None:
@@ -2703,7 +2691,7 @@ class ProducaoPage(QWidget):
                 f"da configuração.\n\nDetalhe: {error}",
             )
 
-        com_colar = " (modelo de ensaio com a coluna Colar)" if modelo != TEMPLATE_FILENAME else ""
+        com_colar = " (modelo de sempre, sem a coluna Colar)" if modelo == TEMPLATE_FILENAME else ""
         if guardada is not None:
             self.status_label.setText(
                 f"Lista Material substituída{com_colar}. A anterior ficou em «{guardada.name}»."
