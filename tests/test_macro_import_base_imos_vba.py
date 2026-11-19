@@ -69,3 +69,31 @@ def test_script_do_modelo_escreve_o_modulo() -> None:
     texto = SCRIPT.read_text(encoding="utf-8")
     assert '"modImportCSVImos_1",' in texto
     assert '"Sub Import_Base_Imos_1",' in texto
+
+
+def test_importacao_da_base_copia_pelo_nome_das_colunas() -> None:
+    codigo, base, normal = _codigo(), _sub("Import_Base_Imos_1"), _sub("Import_CSV_Imos_1")
+    assert "Private mCopiarPorNome As Boolean" in codigo
+    assert "Private Sub CopiarLinha_PorNome(" in codigo
+    # Liga-se só à volta da cópia e desliga-se no fim (também com erro).
+    liga = base.index("mCopiarPorNome = True")
+    assert liga < base.index("Criar_Lista_Ordenada wsImport,") < base.index("mCopiarPorNome = False")
+    assert base[base.index("CleanExit:"):].count("mCopiarPorNome = False") == 1
+    assert "mCopiarPorNome" not in normal
+
+
+def test_copia_pelo_nome_artigo_vem_do_csv_ou_do_rp() -> None:
+    codigo = _codigo()
+    inicio = codigo.index("Private Sub CopiarLinha_PorNome(")
+    corpo = codigo[inicio:codigo.index("End Sub", inicio)]
+    assert "For c = 2 To 23" in corpo  # B a W da LISTA_ORDENADA
+    assert "FindColByHeader(wsImp, 2, cab)" in corpo
+    assert 'cab = "Artigo" Then colImp = FindColByHeader(wsImp, 2, "RP")' in corpo
+    assert "ClearContents" in corpo
+
+
+def test_veio_tambem_na_linha_sem_material() -> None:
+    codigo = _codigo()
+    inicio = codigo.index("Private Sub Converter_Veio_ListaOrdenada(")
+    corpo = codigo[inicio:codigo.index("End Sub", inicio)]
+    assert 'wsLO.Cells(wsLO.Rows.Count, "B").End(xlUp).Row > lastRow' in corpo

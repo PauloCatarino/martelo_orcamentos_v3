@@ -85,6 +85,7 @@ from app.services.lista_material_imos_service import (
     MACRO_IMPORT_BASE_IMOS,
     TEMPLATE_FILENAME,
     TEMPLATE_FILENAME_COLAR,
+    escrever_modulo_vba_no_livro,
     execute_automation_cutrite_macro,
     execute_import_base_imos_macro,
     execute_import_csv_imos_macro,
@@ -484,8 +485,9 @@ class ProducaoPage(QWidget):
         self.lista_base_imos_action.setToolTip(
             "ENSAIO: ler as peças da obra diretamente da base do iMos (sem o CSV "
             "exportado pelo iMos), comparar com esse CSV e criar um Excel de ensaio "
-            f"na subpasta «{lista_base_imos.PASTA_ENSAIO}» da obra. A Lista Material "
-            "da obra não é tocada."
+            f"na subpasta «{lista_base_imos.PASTA_ENSAIO}» da obra, com o modelo "
+            "COLAR, a linha da frente em U, o Artigo composto e o aviso das peças "
+            "não retangulares sem CAM. A Lista Material da obra não é tocada."
         )
         self.lista_base_imos_action.triggered.connect(self._lista_material_base_imos)
 
@@ -2811,11 +2813,14 @@ class ProducaoPage(QWidget):
 
         try:
             with SessionLocal() as session:
+                # 19-11-2026: o modelo COLAR (o da Lista Material_IMOS), para a
+                # lista de ensaio ter a coluna Colar como a de todos.
                 context = prepare_lista_material_imos(
                     session,
                     processo_id=processo.id,
                     nome_enc_imos=nome_enc,
                     values=self._valores_definicoes_lista_material(nome_enc),
+                    template_filename=TEMPLATE_FILENAME_COLAR,
                 )
         except ValueError as error:
             QMessageBox.warning(self, titulo, str(error))
@@ -2839,7 +2844,12 @@ class ProducaoPage(QWidget):
         QApplication.processEvents()
         try:
             execute_lista_material_imos(context)
-        except Exception as error:  # Excel COM / PowerShell
+            # A importação pelo nome das colunas só existe no módulo do repositório:
+            # escreve-se no Excel de ensaio, não no modelo do servidor.
+            self.status_label.setText("A escrever a macro de ensaio no Excel...")
+            QApplication.processEvents()
+            escrever_modulo_vba_no_livro(ensaio.excel)
+        except Exception as error:  # Excel COM / PowerShell / projeto VBA
             QApplication.restoreOverrideCursor()
             self._repor_lista_guardada(guardado, ensaio.excel)
             QMessageBox.critical(
@@ -2863,6 +2873,7 @@ class ProducaoPage(QWidget):
             )
             return
 
+        self._avisar_pecas_forma_sem_cam(titulo, linhas)
         preencher = QMessageBox.question(
             self,
             titulo,
@@ -2892,6 +2903,29 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(
                 self, titulo, f"Não foi possível abrir o Excel:\n{ensaio.excel}"
             )
+
+    def _avisar_pecas_forma_sem_cam(self, titulo: str, linhas) -> None:
+        """Peças não retangulares (ISPEC <> 0) sem programa CAM: avisar antes do AUTOMATION."""
+        avisos = lista_base_imos.pecas_forma_sem_cam(linhas)
+        if not avisos:
+            return
+        mostrar = avisos[:25]
+        if len(avisos) > len(mostrar):
+            mostrar.append(f"... e mais {len(avisos) - len(mostrar)} peça(s).")
+        QMessageBox.warning(
+            self,
+            titulo,
+            f"Atenção: {len(avisos)} peça(s) NÃO retangular(es) sem programa CAM.\n\n"
+            "Estas peças têm uma forma especial e têm de ser feitas na CNC, mas "
+            "ainda não têm programa na base do iMos. Sem programa, eram cortadas "
+            "retangulares:\n\n"
+            + "\n".join(f"- {a}" for a in mostrar)
+            + "\n\nGere o CAM no iMos e volte a fazer a lista, ou confirme estas "
+            "peças antes de enviar para o Cut-Rite.",
+        )
+        self.status_label.setText(
+            f"Aviso: {len(avisos)} peça(s) não retangular(es) sem programa CAM."
+        )
 
     # ---- Lista Material: já existe, o que fazer? ---------------------------
 

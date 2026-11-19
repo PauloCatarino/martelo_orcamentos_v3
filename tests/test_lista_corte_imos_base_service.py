@@ -8,11 +8,11 @@ from app.services import lista_corte_imos_base_service as svc
 
 
 def _peca(pid, nome, *, cnt=1, mat="AGL_19MM", grid=0, comp=500, larg=300, esp=19.2,
-          info1="", info2="", pos="RP_01.10001", ispec=0, matid=None):
+          info1="", pos="RP_01.10001", ispec=0, matid=None, mpe=0, pai=0):
     return {
         "ID": pid, "CNT": cnt, "NAME1": nome, "MATID": matid if matid is not None else mat,
         "MATNAME": mat, "MATGRID": grid, "CLENG": comp, "CWIDTH": larg, "CTHK": esp,
-        "INFO1": info1, "INFO2": info2, "PARTPOSSTR": pos, "ISPEC": ispec,
+        "INFO1": info1, "PARTPOSSTR": pos, "ISPEC": ispec, "MPE_TYPE": mpe, "PARENT_ID": pai,
     }
 
 
@@ -97,7 +97,7 @@ def test_peca_sem_material_fica_de_fora():
 def test_colunas_do_iMos():
     dados = _dados(
         pecas=[_peca(1, "Lateral", grid=2, comp=2225.8, larg=530, esp=19.2, info1="Rasgo",
-                     info2="X", ispec=2)],
+                     ispec=2)],
         orlas=[
             {"ID": 1, "PRFNO": 1, "PRFNAME": "PVC_1.0", "PTYPE": "N"},
             {"ID": 1, "PRFNO": 2, "PRFNAME": "PVC_0.4_B", "PTYPE": "N"},
@@ -110,9 +110,106 @@ def test_colunas_do_iMos():
     assert [linha.valor(c) for c in svc.COLUNAS_IMOS] == [
         "Lateral", "AGL_19MM", "2225.8", "530.0", "19.2", "1", "1",
         "PVC_1.0", "PVC_0.4_D", "PVC_0.4_C", "PVC_0.4_B", "", "",
-        "1608", "CLIENTE_X", "RP_01", "Rasgo", "X", "", "", "", "",
+        "1608", "CLIENTE_X", "RP_01", "Rasgo",
     ]
     assert linha.valor("ISPEC") == "2"
+    assert linha.valor("Artigo") == "RP_01"
+
+
+def test_saem_as_cinco_colunas_que_ninguem_usava():
+    assert svc.COLUNAS_TIRADAS == ("Notas_1", "Cliente_Final", "CNC", "ABD", "BHT")
+    assert not set(svc.COLUNAS_TIRADAS) & set(svc.COLUNAS_CSV)
+    assert svc.COLUNAS_IMOS[-2:] == ("RP", "Notas")
+
+
+@pytest.mark.parametrize("nome, sub, desc, esperado", [
+    ("RP_01", "RP_01", "Lateral", "RP_01"),
+    ("RP_01", "BL_GVT", "Frente de gaveta", "RP_01_BL_GVT_Frente de gaveta"),
+    ("RP_01", "", "Lateral", "RP_01"),
+])
+def test_artigo_composto(nome, sub, desc, esperado):
+    assert svc.artigo_composto(nome, sub, desc) == esperado
+
+
+def test_coluna_artigo_da_lista():
+    linhas = _por_descricao(svc.montar_lista(_dados()))
+    assert linhas["Lateral"].valor("Artigo") == "RP_01"
+    assert linhas["Frente de gaveta"].valor("Artigo") == "RP_01_BL_GVT_Frente de gaveta"
+    # O RP continua lá, para a macro corrigir os rasgos por posição.
+    assert linhas["Frente de gaveta"].valor("RP") == "RP_01"
+
+
+def _frente_u(cut_mae=True, nome_mae="Frente de gaveta"):
+    """Como a APAGAR_02: a mãe sem material e três filhas com material."""
+    pecas = [
+        _peca(10, nome_mae, mat="", matid="", comp=194, larg=796, mpe=1,
+              info1="CNC-Recorte-> União 3 Peças", pos="GAVETA_U.10466"),
+        _peca(11, "Frente de gaveta", comp=194, larg=60, pai=10, pos="GAVETA_U.10466.1"),
+        _peca(12, "Frente de gaveta", comp=194, larg=60, pai=10, pos="GAVETA_U.10466.2"),
+        _peca(13, "Frente de gaveta", comp=60, larg=676, pai=10, pos="GAVETA_U.10466.3"),
+    ]
+    if not cut_mae:  # o SELECT só traz a mãe com «Peça na lista de corte»
+        pecas = pecas[1:]
+    return _dados(
+        pecas=pecas,
+        orlas=[{"ID": i, "PRFNO": n, "PRFNAME": "PVC_1.0", "PTYPE": "O"}
+               for i in (10, 11, 12, 13) for n in (1, 2, 3, 4)],
+        programas=[
+            {"PARTID": 10, "PROGRAMID": "p", "SEQUENCENUM": 1, "ATTRIBUTE": "ncnum", "ATTRVALUE": "10466"},
+            {"PARTID": 10, "PROGRAMID": "p", "SEQUENCENUM": 1, "ATTRIBUTE": "machine", "ATTRVALUE": "LE_CNC"},
+        ],
+    )
+
+
+def test_frente_u_sai_a_mae_sem_material_e_as_filhas():
+    linhas = svc.montar_lista(_frente_u())
+    (mae,) = [l for l in linhas if l.mae]
+    assert mae.valor("Descricao") == "Frente Gaveta |U|"
+    assert mae.valor("Material") == ""
+    assert (mae.valor("Comp."), mae.valor("Larg."), mae.valor("Qt.")) == ("194.0", "796.0", "1")
+    assert mae.valor("Notas") == "CNC-Recorte-> União 3 Peças"
+    assert mae.valor("CNC_1") == "10466"
+    # As orlas ficam nas filhas (senão o ResumoOrlas contava-as duas vezes).
+    assert all(mae.valor(c) == "" for c in svc.ORLAS.values())
+    filhas = [l for l in linhas if not l.mae]
+    assert sum(l.qt for l in filhas) == 3
+    assert all(l.valor("Material") == "AGL_19MM" for l in filhas)
+
+
+def test_mae_sem_peca_na_lista_de_corte_nao_sai():
+    linhas = svc.montar_lista(_frente_u(cut_mae=False))
+    assert not any(l.mae for l in linhas)
+    assert len(linhas) == 2  # as filhas: 194x60 (2) e 60x676 (1)
+
+
+def test_outras_maes_continuam_de_fora():
+    # Na base há milhares de mães com CUT_FLAG ligado (prateleiras amovíveis, fundos em L...).
+    linhas = svc.montar_lista(_frente_u(nome_mae="Prateleira amovível"))
+    assert not any(l.mae for l in linhas)
+
+
+def test_mae_nao_entra_na_comparacao_com_o_cfg(tmp_path):
+    linhas = svc.montar_lista(_frente_u())
+    lidas = [r for r in svc.ler_csv(svc.escrever_csv(linhas, tmp_path / "l.csv"))
+             if r["Material"]]  # o .cfg nunca exporta a mãe
+    comp = svc.comparar_com_csv_imos(linhas, lidas)
+    assert comp.iguais and comp.linhas_base == len(lidas)
+
+
+def test_aviso_das_pecas_nao_retangulares_sem_cam():
+    dados = _dados(
+        pecas=[_peca(1, "Teto", ispec=1, comp=600, larg=500), _peca(2, "Topo", ispec=2),
+               _peca(3, "Lateral"), _peca(4, "Fundo", ispec=2)],
+        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "RP_01"}]
+        + [{"ID": i, "TYP": 4, "ARTID": 0, "ASSID": 100, "NAME": "x"} for i in (1, 2, 3, 4)],
+        programas=[
+            {"PARTID": 4, "PROGRAMID": "p", "SEQUENCENUM": 1, "ATTRIBUTE": "ncnum", "ATTRVALUE": "10050"},
+        ],
+    )
+    avisos = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert len(avisos) == 2
+    assert any(a.startswith("Teto (600.0 x 500.0") and "4 lados, não retangular" in a for a in avisos)
+    assert any(a.startswith("Topo") and "mais de 4 lados" in a for a in avisos)
 
 
 def test_programas_cnc_sem_dummy_nem_espelhados():
@@ -176,8 +273,10 @@ def test_csv_como_o_do_imos(tmp_path):
     assert linhas[0] == ";".join(svc.COLUNAS_CSV) + ";"
     assert linhas[0].startswith("Descricao;Material;Comp.;Larg.;Esp;Qt.;Veio;")
     assert all(ln.count(";") == len(svc.COLUNAS_CSV) for ln in linhas[:-1])
-    # As 22 primeiras colunas são as do CSV do .cfg, pela mesma ordem (a macro copia por posição).
-    assert linhas[0].split(";")[15] == "RP" and linhas[0].split(";")[21] == "BHT"
+    # As 17 primeiras colunas são as do CSV do .cfg, pela mesma ordem; depois as novas.
+    cab = linhas[0].split(";")
+    assert cab[15] == "RP" and cab[16] == "Notas" and cab[17] == "Artigo"
+    assert "BHT" not in cab and "Notas_1" not in cab
     lidas = svc.ler_csv(destino)
     assert {r["Piso"] for r in lidas} == {"R/C"}
 

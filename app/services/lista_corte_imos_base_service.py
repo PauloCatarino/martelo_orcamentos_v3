@@ -3,14 +3,21 @@
 Hoje as peças chegam à Lista Material por um CSV que o próprio iMos escreve com o
 princípio «Processar transferência de dados» (``EXPORT_CSV_CUT_RITE_LE.cfg``), na pasta
 ``I:\\Cutrite\\Work\\Cutrite_Import_CSV``. Este módulo faz a mesma lista dentro do
-Martelo: lê a obra na base do iMos (só SELECT) e escreve um CSV com as MESMAS 22 colunas,
-pela mesma ordem — a macro do Excel copia-as por posição para a LISTA_ORDENADA — e mais
-quatro no fim, que o ``.cfg`` não consegue dar:
+Martelo: lê a obra na base do iMos (só SELECT) e escreve um CSV com as 17 primeiras colunas
+do CSV do ``.cfg`` (Descricao a Notas), pela mesma ordem, e mais cinco que o ``.cfg`` não
+consegue dar:
 
+- ``Artigo``: o que vai para a coluna Artigo da LISTAGEM_CUT_RITE (19-11-2026): o
+  ``ArtigoNome`` quando a peça está diretamente no artigo principal, senão
+  ``ArtigoNome_Artigo/SubArtigo_Descricao`` (ver :func:`artigo_composto`);
 - ``Artigo/SubArtigo``: o artigo mais próximo da peça (num gaveteiro, o sub-artigo);
 - ``Piso``: o campo «Name» do artigo PRINCIPAL (ex.: R/C), vazio quando não é um piso;
 - ``ArtigoNome``: o nome do artigo principal;
 - ``ISPEC``: a forma da peça (0 = retangular de 4 lados).
+
+Desde 19-11-2026 (pedido do Paulo) saem as colunas Notas_1, Cliente_Final, CNC, ABD e
+BHT: nenhuma fórmula, macro ou função do Martelo as usava. A macro do ensaio
+(``Import_Base_Imos_1``) passou a copiar para a LISTA_ORDENADA pelo NOME da coluna.
 
 É um caminho EM PARALELO, pedido pelo Paulo a 29-10-2026 para ensaio: o CSV do ``.cfg``
 e a macro ``Import_CSV_Imos_1`` continuam a ser o caminho normal.
@@ -28,9 +35,15 @@ Regras do motor do iMos que a lista reproduz (confirmadas a 29-10-2026 contra os
 - orlas = ``IDBPRF`` (sem os perfis interiores ``PTYPE='I'``): 1 ESQ, 3 DIR, 4 CIMA, 2 BAIXO;
 - CNC_1 e CNC_2 = o 1.º e o 2.º número de programa (``ncnum``) diferentes, pela ordem da
   sequência, sem as máquinas ``Dummy*`` nem os programas espelhados;
-- Enc. = ``PROADMIN.ARTICLENO``, Cliente = ``CLIENT``, Cliente_Final = ``CUSTOMER``;
-- Notas = ``INFO1`` e Notas_1 = ``INFO2`` da peça; CNC/ABD/BHT saem sempre vazias (nos 316
-  CSV dos últimos 120 dias nunca tiveram nada).
+- Enc. = ``PROADMIN.ARTICLENO``, Cliente = ``CLIENT``;
+- Notas = ``INFO1`` da peça.
+
+Multipeça (19-11-2026, regra R102 do iMos): a peça-mãe (``MPE_TYPE = 1``) não tem material
+e o ``.cfg`` nunca a exporta. A da frente de gaveta em U (com vidro) tem de ir à lista, com
+as medidas, a nota e o CNC, mas SEM material, para o Cut-Rite não a cortar (cortam-se as
+filhas). Sai só a mãe com «Peça na lista de corte» (``CUT_FLAG <> 0``), com filhas e com
+«frente» no nome: na base há milhares de outras mães com ``CUT_FLAG`` ligado (prateleiras
+amovíveis, fundos em L, maleiros...), que continuam de fora (saem só as filhas).
 
 Junta numa linha só as peças com TODAS as colunas iguais. O ``.cfg`` junta por menos
 colunas (sem as Notas) e chega a pôr a nota de uma peça noutra (obra 1608_03, RP_APT4_14).
@@ -47,16 +60,27 @@ from typing import Callable
 
 from app.services.imos_sql import ImosConfig, nome_imos_valido, run_imos_select
 
-# As 22 colunas do CSV do .cfg por defeito, pela mesma ordem: a macro
-# Import_CSV_Imos_1 copia-as POR POSIÇÃO para a LISTA_ORDENADA (B a W).
+# As colunas do CSV do .cfg que a lista da base continua a dar, pela mesma ordem
+# (a Import_CSV_Imos_1 copia o CSV do .cfg POR POSIÇÃO para a LISTA_ORDENADA, B a W;
+# desde 19-11-2026 a Import_Base_Imos_1 copia pelo nome).
 COLUNAS_IMOS: tuple[str, ...] = (
     "Descricao", "Material", "Comp.", "Larg.", "Esp", "Qt.", "Veio",
     "Orla ESQ", "Orla DIR", "Orla CIMA", "Orla BAIXO", "CNC_1", "CNC_2",
-    "Enc.", "Cliente", "RP", "Notas", "Notas_1", "Cliente_Final", "CNC", "ABD", "BHT",
+    "Enc.", "Cliente", "RP", "Notas",
 )
-# Colunas que só a leitura da base consegue dar; ficam depois das 22.
-COLUNAS_NOVAS: tuple[str, ...] = ("Artigo/SubArtigo", "Piso", "ArtigoNome", "ISPEC")
+# Colunas do CSV do .cfg que a lista da base deixou de escrever (19-11-2026).
+COLUNAS_TIRADAS: tuple[str, ...] = ("Notas_1", "Cliente_Final", "CNC", "ABD", "BHT")
+# Colunas que só a leitura da base consegue dar; ficam depois das do .cfg.
+COLUNAS_NOVAS: tuple[str, ...] = ("Artigo", "Artigo/SubArtigo", "Piso", "ArtigoNome", "ISPEC")
 COLUNAS_CSV: tuple[str, ...] = COLUNAS_IMOS + COLUNAS_NOVAS
+
+# A frente de gaveta em U (multipeça): descrição da linha da mãe na lista.
+DESCRICAO_FRENTE_U = "Frente Gaveta |U|"
+# O que significa o ISPEC (forma da peça na IDBGPL).
+FORMAS_ISPEC = {
+    1: "4 lados, não retangular",
+    2: "mais de 4 lados",
+}
 
 # Onde ficam os ficheiros do ensaio: numa subpasta da obra, para nenhuma função
 # do Martelo (Enviar CUT-RITE, Analisar, PDFs) os confundir com a Lista Material.
@@ -97,6 +121,8 @@ class LinhaCorte:
 
     colunas: dict[str, str]
     qt: float = 0.0
+    # Linha da peça-mãe de uma multipeça (a frente em U): não se compara com o .cfg.
+    mae: bool = False
 
     def valor(self, coluna: str) -> str:
         if coluna == "Qt.":
@@ -166,8 +192,8 @@ def ler_obra(
     fora = ", ".join(str(t) for t in TIPOS_FORA)
     pecas = executar(
         cfg,
-        "SELECT ID, CNT, NAME1, MATID, MATNAME, MATGRID, CLENG, CWIDTH, CTHK, INFO1, INFO2, "
-        f"PARTPOSSTR, ISPEC FROM IDBGPL WHERE ORDERID = {obra} "
+        "SELECT ID, CNT, NAME1, MATID, MATNAME, MATGRID, CLENG, CWIDTH, CTHK, INFO1, "
+        f"PARTPOSSTR, ISPEC, MPE_TYPE, PARENT_ID FROM IDBGPL WHERE ORDERID = {obra} "
         f"AND (CUT_FLAG <> 0 OR CUT_FLAG IS NULL) AND TYP NOT IN ({fora}) ORDER BY ID",
     )
     grupos = executar(
@@ -283,9 +309,34 @@ def _programas_por_peca(dados: DadosObraImos) -> dict[int, list[str]]:
     return numeros
 
 
+def artigo_composto(artigo_nome: str, sub_artigo: str, descricao: str) -> str:
+    """A coluna Artigo da lista: o artigo principal, ou principal_subartigo_descrição.
+
+    Regra do Paulo (19-11-2026): se o Artigo/SubArtigo for igual ao ArtigoNome (a peça
+    está diretamente no artigo principal), fica só o ArtigoNome; se for diferente, fica
+    ``ArtigoNome_Artigo/SubArtigo_Descricao``. A Posicao (RP) não entra, por agora.
+    """
+    if not sub_artigo or sub_artigo == artigo_nome:
+        return artigo_nome
+    return "_".join(p for p in (artigo_nome, sub_artigo, descricao) if p)
+
+
+def _e_frente_u(peca: dict, maes_com_filhas: set[int]) -> bool:
+    """A peça-mãe da frente de gaveta em U, que vai à lista sem material."""
+    return (
+        _inteiro(peca.get("MPE_TYPE")) == 1
+        and _inteiro(peca.get("ID")) in maes_com_filhas
+        and "frente" in _texto(peca.get("NAME1")).casefold()
+    )
+
+
 def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
     """Monta as linhas da lista de corte, juntando as peças com as colunas todas iguais."""
     acima = _cadeia_artigos(dados)
+    # Os IDs mudam sempre que a obra é gravada: liga-se pelo PARENT_ID desta leitura.
+    maes_com_filhas = {
+        _inteiro(p.get("PARENT_ID")) for p in dados.pecas if _inteiro(p.get("PARENT_ID"))
+    }
     programas = _programas_por_peca(dados)
     orlas: dict[int, dict[str, str]] = defaultdict(dict)
     for linha in dados.orlas:
@@ -297,7 +348,8 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
     linhas: dict[tuple, LinhaCorte] = {}
     for peca in dados.pecas:
         material = _texto(peca.get("MATNAME")) or _texto(peca.get("MATID"))
-        if not material:
+        mae = not material and _e_frente_u(peca, maes_com_filhas)
+        if not material and not mae:
             continue  # sem material: o .cfg também não a exporta
         id_peca = _inteiro(peca.get("ID"))
         artigos = acima(id_peca)
@@ -305,8 +357,12 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
         for artigo in artigos:
             quantidade *= artigo["quantidade"]
         ncs = programas.get(id_peca, [])
+        descricao = DESCRICAO_FRENTE_U if mae else _texto(peca.get("NAME1"))
+        sub_artigo = artigos[0]["nome"] if artigos else ""
+        artigo_nome = artigos[-1]["nome"] if artigos else ""
+        rp = _texto(peca.get("PARTPOSSTR")).split(".")[0]
         colunas = {
-            "Descricao": _texto(peca.get("NAME1")),
+            "Descricao": descricao,
             "Material": material,
             "Comp.": f"{_numero(peca.get('CLENG')):.1f}",
             "Larg.": f"{_numero(peca.get('CWIDTH')):.1f}",
@@ -316,26 +372,45 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
             "CNC_2": ncs[1] if len(ncs) > 1 else "",
             "Enc.": _texto(cab.get("ARTICLENO")),
             "Cliente": _texto(cab.get("CLIENT")),
-            "RP": _texto(peca.get("PARTPOSSTR")).split(".")[0],
+            "RP": rp,
             "Notas": _texto(peca.get("INFO1")),
-            "Notas_1": _texto(peca.get("INFO2")),
-            "Cliente_Final": _texto(cab.get("CUSTOMER")),
-            "CNC": "",
-            "ABD": "",
-            "BHT": "",
-            "Artigo/SubArtigo": artigos[0]["nome"] if artigos else "",
+            "Artigo": artigo_composto(artigo_nome, sub_artigo, descricao) or rp,
+            "Artigo/SubArtigo": sub_artigo,
             "Piso": _piso(artigos),
-            "ArtigoNome": artigos[-1]["nome"] if artigos else "",
+            "ArtigoNome": artigo_nome,
             "ISPEC": str(_inteiro(peca.get("ISPEC"))),
         }
         for coluna in ORLAS.values():
-            colunas[coluna] = orlas.get(id_peca, {}).get(coluna, "")
+            # A mãe da frente em U não leva orlas: as filhas já as têm (senão o
+            # ResumoOrlas contava-as duas vezes).
+            colunas[coluna] = "" if mae else orlas.get(id_peca, {}).get(coluna, "")
         chave = tuple(colunas[c] for c in COLUNAS_CSV if c != "Qt.")
         if chave not in linhas:
-            linhas[chave] = LinhaCorte(colunas=colunas)
+            linhas[chave] = LinhaCorte(colunas=colunas, mae=mae)
         linhas[chave].qt += quantidade
     # Como o .cfg (POSITION_SORT): por posição; dentro dela, pela ordem das peças.
     return sorted(linhas.values(), key=lambda l: l.colunas["RP"])
+
+
+def pecas_forma_sem_cam(linhas: list[LinhaCorte]) -> list[str]:
+    """As peças não retangulares (ISPEC <> 0) sem programa CAM, para avisar.
+
+    Uma peça com contorno especial tem de ser feita na CNC; sem programa (CNC_1 vazio)
+    a fábrica cortava-a retangular. O ``NCNO`` da peça não serve para isto: o iMos
+    preenche-o sempre (é o número reservado). Vale o programa que está na base
+    (``IDBCAMPROGRAM``): enquanto o CAM não for gerado, nenhuma peça o tem.
+    """
+    avisos = []
+    for linha in linhas:
+        ispec = _inteiro(linha.valor("ISPEC"))
+        if linha.mae or ispec == 0 or linha.valor("CNC_1"):
+            continue
+        forma = FORMAS_ISPEC.get(ispec, f"forma especial, ISPEC {ispec}")
+        avisos.append(
+            f"{linha.valor('Descricao')} ({linha.valor('Comp.')} x {linha.valor('Larg.')}, "
+            f"{linha.valor('Artigo')}): {forma}"
+        )
+    return avisos
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +443,7 @@ def ler_csv(caminho: Path) -> list[dict[str, str]]:
 
 _COLUNAS_COMPARADAS = (
     "Veio", "Orla ESQ", "Orla DIR", "Orla CIMA", "Orla BAIXO", "CNC_1", "CNC_2",
-    "Enc.", "Cliente", "Cliente_Final",
+    "Enc.", "Cliente",
 )
 
 
@@ -379,7 +454,8 @@ def comparar_com_csv_imos(
 
     Agrupa pelas colunas que identificam a peça (descrição, material, medidas, posição,
     notas) e compara as quantidades e o resto das colunas do CSV antigo. As colunas
-    novas não entram: o .cfg não as tem.
+    novas não entram: o .cfg não as tem; nem a linha da frente em U, que o .cfg
+    nunca exporta.
     """
     col_pos = next(
         (c for c in ("RP", "Posicao", "Artigo") if linhas_csv and c in linhas_csv[0]), "RP"
@@ -387,13 +463,15 @@ def comparar_com_csv_imos(
 
     def chave(get, pos) -> tuple:
         return (get("Descricao"), get("Material"), get("Comp."), get("Larg."), get("Esp"),
-                pos, get("Notas"), get("Notas_1"))
+                pos, get("Notas"))
 
     qt_base: dict[tuple, float] = defaultdict(float)
     qt_csv: dict[tuple, float] = defaultdict(float)
     val_base: dict[tuple, dict[str, set]] = defaultdict(lambda: defaultdict(set))
     val_csv: dict[tuple, dict[str, set]] = defaultdict(lambda: defaultdict(set))
     for linha in linhas:
+        if linha.mae:
+            continue
         k = chave(linha.valor, linha.valor("RP"))
         qt_base[k] += linha.qt
         for c in _COLUNAS_COMPARADAS:
@@ -408,7 +486,7 @@ def comparar_com_csv_imos(
     for k in sorted(set(qt_base) | set(qt_csv)):
         b, c = qt_base.get(k, 0.0), qt_csv.get(k, 0.0)
         if abs(b - c) > 1e-6:
-            desc, mat, comp, larg, _, pos, notas, _ = k
+            desc, mat, comp, larg, _, pos, notas = k
             diferencas.append(
                 f"{pos} | {desc} | {mat} | {comp} x {larg}"
                 + (f" | nota «{notas}»" if notas else "")
@@ -428,7 +506,7 @@ def comparar_com_csv_imos(
     return ComparacaoLista(
         pecas_base=sum(qt_base.values()),
         pecas_csv=sum(qt_csv.values()),
-        linhas_base=len(linhas),
+        linhas_base=sum(1 for l in linhas if not l.mae),
         linhas_csv=len(linhas_csv),
         diferencas=diferencas,
     )
@@ -530,9 +608,23 @@ def gravar_ensaio(
         "As linhas iguais em todas as colunas ficam numa só (o .cfg às vezes parte-as); "
         "por isso o número de linhas pode ser menor com as mesmas peças."
     )
+    maes = [l for l in linhas if l.mae]
+    if maes:
+        texto.append(
+            f"Frente em U: {len(maes)} linha(s) «{DESCRICAO_FRENTE_U}» sem material "
+            "(o Cut-Rite não as corta; cortam-se as peças que as compõem). O CSV do "
+            "iMos não as tem: ficam fora da comparação."
+        )
+    sem_cam = pecas_forma_sem_cam(linhas)
+    if sem_cam:
+        texto.append(
+            f"ATENÇÃO: {len(sem_cam)} peça(s) não retangular(es) SEM programa CAM:"
+        )
+        texto.extend(f"  - {p}" for p in sem_cam)
     texto.append(
-        "Colunas novas no fim do CSV (ficam no separador da importação, não na "
-        "LISTA_ORDENADA): Artigo/SubArtigo, Piso, ArtigoNome, ISPEC."
+        "Coluna Artigo = ArtigoNome, ou ArtigoNome_SubArtigo_Descricao quando a peça "
+        "está num sub-artigo. Colunas só no separador da importação: Artigo/SubArtigo, "
+        "Piso, ArtigoNome, ISPEC. Saíram: " + ", ".join(COLUNAS_TIRADAS) + "."
     )
     resumo = "\r\n".join(texto)
     relatorio = pasta / f"{nome}_Comparacao_com_CSV_iMos.txt"

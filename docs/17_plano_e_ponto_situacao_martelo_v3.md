@@ -3254,6 +3254,90 @@ Por fazer, depois do ensaio:
 - o aviso do ISPEC nas Notas;
 - decidir se o caminho da base substitui o do CSV.
 
+### Lista única, ronda 1: COLAR, frente em U, Artigo composto, aviso ISPEC (2026-11-19, ENSAIO)
+
+Decisão do Paulo (19-11-2026): a Lista Material lida da base passa a ser a lista única. O `.cfg`
+do iMos nunca exporta a peça-mãe de uma multipeça (com `MPE_MOTHER_NULL=1` sai com as medidas
+a 0; regra R102 e `ferragens\CORREDICAS\FRENTE_VIDRO_U_LISTA_CSV.md` na pasta
+CONFIGURACAO_FERRAGENS_IMOX_IX). Afina-se primeiro **só a lista de ensaio**; a **Lista
+Material_IMOS** (botão próprio, modelo COLAR do servidor) **não muda** enquanto o Paulo não
+aprovar.
+
+O que mudou na «Lista Material da base iMos (ensaio)»:
+1. **Modelo COLAR**: o Excel de ensaio nasce do `Lista_Material_IMOS_MARTELO_COLAR.xltm`, por isso
+   a LISTAGEM_CUT_RITE tem a coluna **Colar** e as mesmas colunas, pela mesma ordem, da Lista
+   Material_IMOS (nenhuma a mais).
+2. **Macro nova só no Excel de ensaio**: depois de criar o livro, o Martelo escreve nele o módulo
+   `modImportCSVImos_1` de `scripts/vba` (`escrever_modulo_vba_no_livro`). O modelo do servidor
+   não é tocado. A `Import_Base_Imos_1` copia agora para a LISTA_ORDENADA **pelo nome das
+   colunas**; a `Import_CSV_Imos_1` fica igual.
+3. **Frente em U**: a peça-mãe (`MPE_TYPE=1`, «Peça na lista de corte» ligada, com filhas e
+   «frente» no nome) sai numa linha **`Frente Gaveta |U|`** com Comp., Larg., Qt., Notas e CNC_1,
+   **sem Material** (o Cut-Rite não a corta) e **sem orlas** (as filhas já as têm; senão o
+   ResumoOrlas contava-as 2 vezes). As outras mães continuam de fora; saem só as filhas.
+   **Atenção:** na TESTE02 há 6 455 mães com «Peça na lista de corte» ligada (Maleiro, Remate da
+   base, Fundo, Prateleira amovível, Lateral...), e não só a frente em U. Por isso a regra está,
+   por agora, limitada às frentes: falta o Paulo decidir.
+4. **Coluna Artigo** (LISTA_ORDENADA e LISTAGEM_CUT_RITE): `ArtigoNome` quando o
+   Artigo/SubArtigo é igual; senão `ArtigoNome_Artigo/SubArtigo_Descricao` (ex.:
+   `RP_A_01_GV1_Gaveteiro Fundo`). A Posicao (RP) já não vai para o Artigo, mas continua no
+   separador da importação, para a correção dos rasgos por posição.
+5. **Saíram** do CSV e do separador da importação as colunas `Notas_1`, `Cliente_Final`, `CNC`,
+   `ABD` e `BHT`. Confirmado antes: nenhuma fórmula, nenhum nome do modelo COLAR e nenhuma macro
+   (o `modulo` e o `Preencher_Tabela_Cut_Rite` copiam pelo nome, e estes nomes não existem na
+   LISTAGEM_CUT_RITE) nem o Martelo as usam. Na LISTA_ORDENADA estas colunas ficam vazias.
+6. **Aviso do ISPEC**: antes do AUTOMATION, o Martelo avisa com a lista das peças com `ISPEC <> 0`
+   (forma não retangular) **sem programa CAM**. Também fica no relatório
+   `<obra>_Comparacao_com_CSV_iMos.txt`. «Tem CAM» = tem programa na `IDBCAMPROGRAM` (o `NCNO`
+   está sempre preenchido e não serve).
+
+Confirmado antes de entregar (APAGAR_02 da `imos_LE_TESTE02`, Excel feito num cópia local do
+modelo COLAR, passos de importação e AUTOMATION corridos por COM):
+- linha `Frente Gaveta |U|` 194 × 796, Qt. 1, nota «CNC-Recorte-> União 3 Peças+Frente com Vidro
+  Interior…», Material vazio, orlas vazias; as 3 filhas saem com material;
+- a Colar está na LISTAGEM_CUT_RITE, sem colunas a mais;
+- o Artigo composto, por exemplo `RP_A_01_GV2_Gaveteiro Lateral Gaveta`;
+- o aviso apanha o **Teto** (600 × 500, ISPEC 1) e o **Topo** (840.5 × 480.9, ISPEC 2).
+- **O CNC_1 sai vazio em todas as peças**, também na mãe: a APAGAR_02 da TESTE02 não tem nenhum
+  programa CAM na base (`IDBCAMPROGRAM` com 0 linhas; gravar a obra apaga-os até se gerar o CAM
+  outra vez). Para aparecer o 10466, gerar o CAM da obra no iMos antes de fazer a lista.
+
+Guião de teste:
+
+1. Fechar o Martelo e voltar a abri-lo (a partir da pasta principal).
+2. **Configurações** → **Ligação iMos** → **Base de dados** = `imos_LE_TESTE02` → **Guardar
+   configuração**. A `APAGAR_02` da `imos_le` é outra, mais antiga. **No fim do teste, repor
+   `imos_le`.**
+3. (Opcional, para ver o CNC) No iMos, na TESTE02, gerar o CAM da `APAGAR_02` e gravar.
+4. **Produção** → escolher uma obra de teste e pôr o **Nome Enc IMOS IX** = `APAGAR_02`.
+5. **Funções** → **«Lista Material da base iMos (ensaio)…»**. Na 1.ª caixa, esperado:
+   - «Frente em U: 1 linha(s) «Frente Gaveta |U|» sem material»;
+   - sem CAM: «ATENÇÃO: 2 peça(s) não retangular(es) SEM programa CAM», com o Teto e o Topo.
+6. **Sim** (criar o Excel). A macro pode perguntar pelas linhas com Qt.=0; responder como
+   sempre.
+7. Antes da pergunta do AUTOMATION, esperado: a caixa **«Atenção: 2 peça(s) NÃO
+   retangular(es) sem programa CAM»** com o Teto e o Topo (se já houver CAM com programa para
+   elas, não aparece). **OK** → **Sim** ao AUTOMATION.
+8. No Excel `Ensaio_Lista_Base_iMos\Lista_Material_APAGAR_02_BASE.xlsm`, esperado:
+   - separador `APAGAR_02`: termina em `Notas`, `Artigo`, `Artigo/SubArtigo`, `Piso`,
+     `ArtigoNome`, `ISPEC`, e já não tem `Notas_1`, `Cliente_Final`, `CNC`, `ABD` nem `BHT`;
+   - LISTAGEM_CUT_RITE com a coluna **Colar** a seguir à CNC_2 e o botão Colar;
+   - linha **`Frente Gaveta |U|`**: Comp 194, Larg 796, Qt 1, Material **vazio**, orlas vazias,
+     a nota da frente com vidro, Artigo `GAVETA_FRENTE_VIDRO` (e CNC_1 10466, se gerou o CAM);
+   - as 3 filhas `Frente de gaveta` (194 × 60 Qt 2 e 60 × 676 Qt 1) com material;
+   - coluna **Artigo**: `RP_A_01` nas peças do roupeiro, e `RP_A_01_GV1_Gaveteiro Fundo` etc.
+     nas peças do gaveteiro.
+9. Repor a base do iMos em **Configurações** → **Ligação iMos** (`imos_le`).
+
+Por decidir (Paulo):
+- as outras mães com «Peça na lista de corte» ligada: ficam de fora (como agora) ou saem também,
+  sem material?
+- a descrição `Frente Gaveta |U|` vale para todas as frentes em multipeça?
+- o aviso do ISPEC só no Martelo (como agora) ou também dentro do botão AUTOMATION do Excel;
+- depois de aprovar: levar tudo à Lista Material_IMOS (refazer o modelo COLAR com o
+  `criar_modelo_lista_material_colar.py` + o novo `modImportCSVImos_1`) e ver o Enviar CUT-RITE
+  com a linha sem material.
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em
@@ -3700,8 +3784,8 @@ das Notas. Só se não houver em nenhuma é que a linha `_38.MM` fica com o Nome
 **2. O botão «Lista Material_IMOS» usa o modelo COLAR.** O botão principal do menu Produção
 mantém o nome, mas cria a lista com `Lista_Material_IMOS_MARTELO_COLAR.xltm`. A opção «Lista
 Material com coluna Colar (ensaio)…» saiu das Funções. O modelo de sempre fica no servidor, mas o
-Martelo já não o usa nesse botão. A «Lista Material da base iMos (ensaio)» continua com o modelo
-de sempre.
+Martelo já não o usa nesse botão. A «Lista Material da base iMos (ensaio)» continuou com o modelo
+de sempre até 19-11-2026; desde então usa também o COLAR (ver «Lista única, ronda 1»).
 - **Atenção:** os colegas só veem o botão novo **com uma versão nova do Martelo**. A janela das
   orlas já está no modelo COLAR do servidor e serve para as listas novas criadas a partir de agora.
 - **O Cut-Rite** recebe a coluna Colar (24 colunas) em todas as listas novas: tem de ter essa

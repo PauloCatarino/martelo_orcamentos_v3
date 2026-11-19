@@ -37,6 +37,12 @@ icons_dir = ROOT / "icons"
 if icons_dir.exists():
     datas.append((str(icons_dir), "icons"))
 
+# Lista Material da base iMos (ensaio, 19-11-2026): o Martelo escreve este módulo
+# VBA no Excel de ensaio (importação pelo nome das colunas).
+modulo_base_imos = ROOT / "scripts" / "vba" / "modImportCSVImos_1.bas"
+if modulo_base_imos.exists():
+    datas.append((str(modulo_base_imos), "scripts/vba"))
+
 # ReportLab precisa dos seus ficheiros de dados/fontes.
 datas += collect_data_files("reportlab")
 

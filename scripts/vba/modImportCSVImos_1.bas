@@ -33,6 +33,11 @@ Option Explicit
 '>>> AJUSTA AQUI O CAMINHO DA PASTA DOS CSV
 Private Const PASTA_CSV As String = "I:\Cutrite\Work\Cutrite_Import_CSV\"
 
+' Ensaio 19-11-2026: a Import_Base_Imos_1 liga isto para a LISTA_ORDENADA ser
+' preenchida pelo NOME das colunas (o CSV do Martelo ja nao tem as 22 colunas do
+' .cfg pela mesma ordem). A Import_CSV_Imos_1 continua a copiar por posicao.
+Private mCopiarPorNome As Boolean
+
 '--------------------------
 ' MACRO PRINCIPAL
 '--------------------------
@@ -469,6 +474,11 @@ Private Sub Converter_Veio_ListaOrdenada(ByVal wsLO As Worksheet)
 
     Dim lastRow As Long
     lastRow = wsLO.Cells(wsLO.Rows.Count, "C").End(xlUp).Row
+    ' A linha da frente em U (lista da base, 19-11-2026) nao tem Material:
+    ' contar tambem pela Descricao, para o Veio dela tambem ser convertido.
+    If wsLO.Cells(wsLO.Rows.Count, "B").End(xlUp).Row > lastRow Then
+        lastRow = wsLO.Cells(wsLO.Rows.Count, "B").End(xlUp).Row
+    End If
     If lastRow < 4 Then Exit Sub
 
     Dim r As Long
@@ -670,6 +680,11 @@ Private Sub CopiarLinha_Mapeada(ByVal wsImp As Worksheet, ByVal rowImp As Long, 
     ' Copia valores do import para LISTA_ORDENADA respeitando as colunas
     ' LISTA_ORDENADA começa em B (col 2)
 
+    If mCopiarPorNome Then
+        CopiarLinha_PorNome wsImp, rowImp, wsLO, rowLO
+        Exit Sub
+    End If
+
     wsLO.Cells(rowLO, "B").Value = wsImp.Cells(rowImp, 1).Value
     wsLO.Cells(rowLO, "C").Value = wsImp.Cells(rowImp, 2).Value
     wsLO.Cells(rowLO, "D").Value = wsImp.Cells(rowImp, 3).Value
@@ -696,6 +711,28 @@ Private Sub CopiarLinha_Mapeada(ByVal wsImp As Worksheet, ByVal rowImp As Long, 
     wsLO.Cells(rowLO, "V").Value = wsImp.Cells(rowImp, 21).Value
     wsLO.Cells(rowLO, "W").Value = wsImp.Cells(rowImp, 22).Value
 
+End Sub
+
+Private Sub CopiarLinha_PorNome(ByVal wsImp As Worksheet, ByVal rowImp As Long, ByVal wsLO As Worksheet, ByVal rowLO As Long)
+    ' Ensaio 19-11-2026 (lista da base do iMos): cada coluna da LISTA_ORDENADA
+    ' (cabecalhos na linha 3, de B a W) recebe a coluna do import com o MESMO
+    ' nome. As que o CSV ja nao traz (Notas_1, Cliente_Final, CNC, ABD, BHT)
+    ' ficam vazias. "Artigo" vem da coluna Artigo do CSV (ArtigoNome ou
+    ' ArtigoNome_SubArtigo_Descricao); se o CSV nao a tiver, vale o RP.
+    Dim c As Long, colImp As Long
+    Dim cab As String
+
+    For c = 2 To 23
+        cab = Trim$(CStr(wsLO.Cells(3, c).Value))
+        colImp = 0
+        If Len(cab) > 0 Then colImp = FindColByHeader(wsImp, 2, cab)
+        If colImp = 0 And cab = "Artigo" Then colImp = FindColByHeader(wsImp, 2, "RP")
+        If colImp > 0 Then
+            wsLO.Cells(rowLO, c).Value = wsImp.Cells(rowImp, colImp).Value
+        Else
+            wsLO.Cells(rowLO, c).ClearContents
+        End If
+    Next c
 End Sub
 
 Private Function FindColByHeader(ByVal ws As Worksheet, ByVal headerRow As Long, ByVal headerText As String) As Long
@@ -742,11 +779,14 @@ End Function
 '  Macro: Import_Base_Imos_1 caminhoCSV
 '
 '  Em paralelo com a Import_CSV_Imos_1, que fica exatamente como estava.
-'  O Martelo lê a obra na base do iMos e escreve um CSV com as mesmas
-'  22 colunas do CSV do iMos (e, no fim, Artigo/SubArtigo, Piso,
-'  ArtigoNome e ISPEC, que ficam só no separador da importação).
+'  O Martelo lê a obra na base do iMos e escreve um CSV com as colunas
+'  Descricao a Notas do CSV do iMos e, no fim, Artigo, Artigo/SubArtigo,
+'  Piso, ArtigoNome e ISPEC (estas 4 ficam só no separador da importação).
 '  Esta macro faz os mesmos passos 1) a 8) da Import_CSV_Imos_1, mas
 '  importa ESSE ficheiro em vez de o procurar na pasta PASTA_CSV.
+'  19-11-2026: copia para a LISTA_ORDENADA pelo NOME das colunas
+'  (CopiarLinha_PorNome); as colunas Notas_1, Cliente_Final, CNC, ABD e
+'  BHT saíram do CSV e ficam vazias.
 '====================================================================
 Public Sub Import_Base_Imos_1(ByVal caminhoCSV As String)
 
@@ -781,11 +821,13 @@ Public Sub Import_Base_Imos_1(ByVal caminhoCSV As String)
     ' 2) e 3) Importar o CSV do Martelo para wsImport (a partir de A2)
     ImportarCSV_ParaFolha wsImport, caminhoCSV
 
-    ' 4) a 8) Iguais à Import_CSV_Imos_1
+    ' 4) a 8) Iguais à Import_CSV_Imos_1 (mas a cópia é pelo nome das colunas)
     Tratar_Linhas_Qt_Zero wsImport
     CorrigirColunaRP wsImport
     VerificarECorrigir_Rasgo_Em_Notas wsImport
+    mCopiarPorNome = True
     Criar_Lista_Ordenada wsImport, ThisWorkbook.Worksheets("DEFENICOES"), ThisWorkbook.Worksheets("LISTA_ORDENADA")
+    mCopiarPorNome = False
     Converter_Veio_ListaOrdenada ThisWorkbook.Worksheets("LISTA_ORDENADA")
 
     Application.StatusBar = "Lista da base do iMos (Martelo) importada para: " & numProcesso
@@ -795,6 +837,7 @@ Public Sub Import_Base_Imos_1(ByVal caminhoCSV As String)
         1, "Microsoft Excel", vbInformation
     On Error GoTo EH
 CleanExit:
+    mCopiarPorNome = False
     Application.Calculation = oldCalc
     Application.EnableEvents = True
     Application.ScreenUpdating = True

@@ -408,3 +408,27 @@ def test_importar_lista_da_base_imos_passa_o_csv_a_macro(monkeypatch, tmp_path) 
     monkeypatch.setattr(svc, "_sheet_has_material_rows", lambda *a, **k: False)
     with pytest.raises(RuntimeError, match="LISTA_ORDENADA ficou sem peças"):
         svc.execute_import_base_imos_macro(path, csv_path)
+
+
+def test_modulo_de_ensaio_vem_do_repositorio_sem_attribute() -> None:
+    from app.services import lista_material_imos_service as svc
+
+    origem = svc._fonte_modulo_vba(svc.MODULO_IMPORT_CSV_IMOS)
+    assert origem.is_file()
+    codigo = svc.codigo_modulo_vba(origem)
+    assert "Attribute VB_" not in codigo
+    assert "Private Sub CopiarLinha_PorNome(" in codigo
+    # O executável também leva o módulo (o .spec copia-o para scripts/vba).
+    from pathlib import Path
+
+    spec = (Path(__file__).resolve().parents[1] / "Martelo_Orcamentos_V3.spec").read_text(
+        encoding="utf-8"
+    )
+    assert '"modImportCSVImos_1.bas"' in spec and '"scripts/vba"' in spec
+
+
+def test_escrever_modulo_recusa_livro_que_nao_existe(tmp_path) -> None:
+    from app.services import lista_material_imos_service as svc
+
+    with pytest.raises(ValueError, match="não encontrado"):
+        svc.escrever_modulo_vba_no_livro(tmp_path / "nao_existe.xlsm")
