@@ -7,7 +7,6 @@ import importlib
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,94 +35,11 @@ MACRO_IMPORT_LISTAS_FERRAGENS = "ImportarListasFerragensIMOS_14"
 # Ensaio (29-10-2026): a mesma importação, mas da lista que o Martelo lê da base
 # do iMos (lista_corte_imos_base_service) em vez do CSV do .cfg.
 MACRO_IMPORT_BASE_IMOS = "Import_Base_Imos_1"
-# 19-11-2026: a Import_Base_Imos_1 nova (cópia pelo nome das colunas) ainda não
-# está nos modelos do servidor. O Martelo escreve o módulo no Excel de ENSAIO,
-# depois de o criar; os modelos e a Lista Material_IMOS não mudam.
-MODULO_IMPORT_CSV_IMOS = "modImportCSVImos_1"
-# 19-11-2026 (PC do Pedro): «as macros estão ativas» e mesmo assim falhava.
-# Ativar macros deixa CORRER as do modelo (é o que a Lista Material_IMOS faz);
-# ESCREVER código num livro é outra opção do Excel, na mesma página.
-MENSAGEM_SEM_ACESSO_VBA = (
-    "O Excel deste PC não deixa o Martelo escrever a macro nova no livro de "
-    "ensaio.\n\n"
-    "Ter as macros ativas não chega: é outra opção, na mesma página. No Excel: "
-    "Ficheiro › Opções › Centro de Fidedignidade › botão «Definições do Centro "
-    "de Fidedignidade...» › Definições de Macros › em «Definições de macros do "
-    "programador», marque «Confiar no acesso ao modelo de objeto do projeto "
-    "VBA». Carregue em OK duas vezes, feche o Excel e repita o ensaio.\n\n"
-    "Só o ensaio precisa disto: a Lista Material_IMOS corre as macros que já "
-    "estão no modelo, não escreve nenhuma.\n\n"
-    "Detalhe: {detalhe}"
-)
-
-
-def _fonte_modulo_vba(nome: str) -> Path:
-    """O .bas de ``scripts/vba`` (no executável, a cópia que o .spec lá põe)."""
-    base = getattr(sys, "_MEIPASS", None)
-    raiz = Path(base) if base else Path(__file__).resolve().parents[2]
-    return raiz / "scripts" / "vba" / f"{nome}.bas"
-
-
-def codigo_modulo_vba(origem: Path) -> str:
-    """Texto do .bas sem as linhas «Attribute VB_...», que o VBE gere sozinho."""
-    linhas = Path(origem).read_bytes().decode("cp1252").splitlines()
-    return "\r\n".join(l for l in linhas if not l.startswith("Attribute VB_"))
-
-
-def escrever_modulo_vba_no_livro(
-    workbook_path: Path, nome: str = MODULO_IMPORT_CSV_IMOS, origem: Path | None = None
-) -> Path:
-    """Troca o código de um módulo VBA DENTRO de um livro (não no modelo).
-
-    Substitui-se o TEXTO (DeleteLines + AddFromString) em vez de remover e
-    importar o módulo: o Excel só liberta o nome depois de fechar o livro.
-    Precisa de «Confiar no acesso ao modelo de objeto do projeto VBA».
-    """
-    path = Path(workbook_path)
-    if not path.is_file():
-        raise ValueError(f"Excel não encontrado:\n{path}")
-    origem = Path(origem) if origem else _fonte_modulo_vba(nome)
-    if not origem.is_file():
-        raise ValueError(f"Módulo VBA não encontrado:\n{origem}")
-    codigo = codigo_modulo_vba(origem)
-    win32_client = importlib.import_module("win32com.client")
-    excel = None
-    workbook = None
-    try:
-        excel = win32_client.DispatchEx("Excel.Application")
-        excel_com.preparar_excel(excel)
-        try:
-            excel.AutomationSecurity = 3  # não correr nada ao abrir
-        except Exception:
-            pass
-        workbook = excel.Workbooks.Open(str(path.resolve()), UpdateLinks=0, ReadOnly=False)
-        if workbook.ReadOnly:
-            raise RuntimeError(
-                "O Excel está aberto ou bloqueado. Feche o livro antes de continuar."
-            )
-        try:
-            projeto = workbook.VBProject
-            componentes = list(projeto.VBComponents)
-        except Exception as error:
-            raise RuntimeError(MENSAGEM_SEM_ACESSO_VBA.format(
-                detalhe=excel_com.descrever_erro(error)
-            )) from error
-        componente = next((c for c in componentes if c.Name == nome), None)
-        if componente is None:
-            raise RuntimeError(f"O livro não tem o módulo VBA «{nome}».")
-        modulo = componente.CodeModule
-        if modulo.CountOfLines:
-            modulo.DeleteLines(1, modulo.CountOfLines)
-        modulo.AddFromString(codigo)
-        workbook.Save()
-        return path
-    finally:
-        if workbook is not None:
-            try:
-                workbook.Close(False)
-            except Exception:
-                pass
-        excel_com.fechar_excel(excel)
+# 19-11-2026: a Import_Base_Imos_1 nova (cópia pelo nome das colunas) está no
+# modelo COLAR do servidor (pedido do Paulo, 19-11 à tarde). Até aí o Martelo
+# escrevia-a no Excel de ensaio, e isso pedia em cada PC a opção «Confiar no
+# acesso ao modelo de objeto do projeto VBA» (PC do Pedro). Mudanças à macro:
+# scripts/vba/modImportCSVImos_1.bas + escrever no modelo.
 
 
 @dataclass(frozen=True)

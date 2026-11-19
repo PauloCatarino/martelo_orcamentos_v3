@@ -85,7 +85,6 @@ from app.services.lista_material_imos_service import (
     MACRO_IMPORT_BASE_IMOS,
     TEMPLATE_FILENAME,
     TEMPLATE_FILENAME_COLAR,
-    escrever_modulo_vba_no_livro,
     execute_automation_cutrite_macro,
     execute_import_base_imos_macro,
     execute_import_csv_imos_macro,
@@ -2865,13 +2864,10 @@ class ProducaoPage(QWidget):
         self.status_label.setText("A criar o Excel de ensaio a partir do modelo...")
         QApplication.processEvents()
         try:
+            # A Import_Base_Imos_1 (cópia pelo nome das colunas) já vem no modelo
+            # COLAR desde 19-11-2026: nada se escreve no projeto VBA do livro.
             execute_lista_material_imos(context)
-            # A importação pelo nome das colunas só existe no módulo do repositório:
-            # escreve-se no Excel de ensaio, não no modelo do servidor.
-            self.status_label.setText("A escrever a macro de ensaio no Excel...")
-            QApplication.processEvents()
-            escrever_modulo_vba_no_livro(ensaio.excel)
-        except Exception as error:  # Excel COM / PowerShell / projeto VBA
+        except Exception as error:  # Excel COM / PowerShell
             QApplication.restoreOverrideCursor()
             self._repor_lista_guardada(guardado, ensaio.excel)
             QMessageBox.critical(

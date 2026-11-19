@@ -3612,8 +3612,16 @@ Dois erros no ensaio («Lista Material da base iMos (ensaio)»), com a obra **19
   **Ficheiro › Opções › Centro de Fidedignidade › «Definições do Centro de Fidedignidade…» › Definições de Macros ›
   Definições de macros do programador › «Confiar no acesso ao modelo de objeto do projeto VBA»**. No PC do Paulo está
   ligada; no do Pedro não.
-- A mensagem passou a dar o caminho completo e a explicar a diferença. Deixa de ser preciso quando o módulo novo
-  entrar no modelo COLAR (só com o sim do Paulo, quando aprovar a lista única).
+- **Decisão do Paulo (19-11, 17h):** pôr a macro diretamente no modelo, para não dar o mesmo erro noutros PCs. Feito às
+  17:25: `modImportCSVImos_1` do repositório escrito no **`Lista_Material_IMOS_MARTELO_COLAR.xltm`** do servidor
+  (estava lá a versão de 29-10, igual à do repositório nesse dia; o projeto VBA compila; cópia
+  `Lista_Material_IMOS_MARTELO_COLAR_backup_20261119_172506.xltm` ao lado). A `Import_CSV_Imos_1` (Lista
+  Material_IMOS) continua a copiar por posição: para ela só muda a contagem de linhas do Veio, que passa a ver também
+  a coluna Descrição (no CSV do `.cfg` há sempre material, por isso nada muda).
+- O ensaio **deixou de escrever** a macro no livro (`escrever_modulo_vba_no_livro` saiu, e o `.bas` saiu do instalador):
+  a opção do VBA deixa de ser precisa em qualquer PC. Só os Excel criados a partir de agora trazem a macro do modelo.
+- `scripts/atualizar_macros_modelo_lista_material.py <COLAR.xltm> modImportCSVImos_1` passou a ser a maneira de mudar
+  esta macro no COLAR; sem a lista de módulos recusa (o COLAR tem `modResumoOrlas` próprio, que ficava apagado).
 
 Guião de teste:
 1. Fechar e voltar a abrir o Martelo **da pasta principal**; Ligação iMos = `imos_le`.
@@ -3623,9 +3631,12 @@ Guião de teste:
    (1_FERRAGENS, 2_PURCH, 3_SPP, 5_ETIQUETA_PALETE, 5_Custo_Obra_Ferragens).
 3. Com a 1.0.34 instalada (sem a correção): se voltar o «[WinError 5] Acesso negado», abrir o Kaspersky › Relatórios e
    ver se aparece o `Martelo_Orcamentos_V3.exe` bloqueado à mesma hora. Esperado: a entrada do Kaspersky confirma a causa.
-4. PC do Pedro, com o Excel fechado: ligar «Confiar no acesso ao modelo de objeto do projeto VBA» (caminho acima) → OK, OK
-   → repetir o ensaio da 1912. Esperado: o Excel de ensaio é criado e importa a lista (passo 2).
-5. Depois da versão nova instalada: num PC onde o antivírus trave o Martelo, a caixa diz «O Windows não deixou o Martelo
+4. PC do Pedro, **com a versão nova (1.0.35) e SEM ligar a opção do VBA**: Produção → obra 1912 → Funções → «Lista
+   Material da base iMos (ensaio)…» → «Yes». Esperado: o Excel de ensaio é criado e a LISTA_ORDENADA é preenchida
+   (passo 2), sem o erro «não é fidedigno».
+5. Lista Material_IMOS normal (qualquer obra, qualquer PC): o botão «Lista Material_IMOS» importa como sempre (a
+   macro normal não mudou).
+6. Depois da versão nova instalada: num PC onde o antivírus trave o Martelo, a caixa diz «O Windows não deixou o Martelo
    arrancar o PowerShell (Acesso negado), nem à 3.ª tentativa…» com o que fazer, em vez de só «Acesso negado».
 
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)

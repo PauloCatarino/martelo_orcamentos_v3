@@ -413,25 +413,24 @@ def test_importar_lista_da_base_imos_passa_o_csv_a_macro(monkeypatch, tmp_path) 
         svc.execute_import_base_imos_macro(path, csv_path)
 
 
-def test_modulo_de_ensaio_vem_do_repositorio_sem_attribute() -> None:
-    from app.services import lista_material_imos_service as svc
+def test_ensaio_ja_nao_escreve_macros_no_livro() -> None:
+    """19-11-2026: a macro do ensaio passou para o modelo COLAR do servidor.
 
-    origem = svc._fonte_modulo_vba(svc.MODULO_IMPORT_CSV_IMOS)
-    assert origem.is_file()
-    codigo = svc.codigo_modulo_vba(origem)
-    assert "Attribute VB_" not in codigo
-    assert "Private Sub CopiarLinha_PorNome(" in codigo
-    # O executável também leva o módulo (o .spec copia-o para scripts/vba).
+    Escrevê-la no livro pedia, em cada PC, «Confiar no acesso ao modelo de objeto
+    do projeto VBA» (o Excel do Pedro recusou). Nem o serviço nem a Produção
+    mexem no projeto VBA de um livro.
+    """
     from pathlib import Path
 
-    spec = (Path(__file__).resolve().parents[1] / "Martelo_Orcamentos_V3.spec").read_text(
-        encoding="utf-8"
-    )
-    assert '"modImportCSVImos_1.bas"' in spec and '"scripts/vba"' in spec
-
-
-def test_escrever_modulo_recusa_livro_que_nao_existe(tmp_path) -> None:
     from app.services import lista_material_imos_service as svc
 
-    with pytest.raises(ValueError, match="não encontrado"):
-        svc.escrever_modulo_vba_no_livro(tmp_path / "nao_existe.xlsm")
+    raiz = Path(__file__).resolve().parents[1]
+    for ficheiro in (
+        raiz / "app" / "services" / "lista_material_imos_service.py",
+        raiz / "app" / "ui" / "pages" / "producao_page.py",
+    ):
+        texto = ficheiro.read_text(encoding="utf-8")
+        assert "VBProject" not in texto, ficheiro.name
+        assert "escrever_modulo_vba_no_livro" not in texto, ficheiro.name
+    assert not hasattr(svc, "escrever_modulo_vba_no_livro")
+    assert svc.TEMPLATE_FILENAME_COLAR == "Lista_Material_IMOS_MARTELO_COLAR.xltm"

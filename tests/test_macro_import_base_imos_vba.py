@@ -92,6 +92,35 @@ def test_copia_pelo_nome_artigo_vem_do_csv_ou_do_rp() -> None:
     assert "ClearContents" in corpo
 
 
+def _script():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("atualizar_macros_teste", SCRIPT)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_no_modelo_colar_so_se_escrevem_os_modulos_pedidos() -> None:
+    """19-11-2026: o modImportCSVImos_1 foi escrito no COLAR do servidor.
+
+    O COLAR tem versões próprias (scripts/vba/colar): escrever-lhe tudo apagava-as.
+    """
+    import pytest
+
+    script = _script()
+    colar = Path("Lista_Material_IMOS_MARTELO_COLAR.xltm")
+    assert script.modulos_a_escrever(colar, ["modImportCSVImos_1"]) == ("modImportCSVImos_1",)
+    with pytest.raises(SystemExit, match="diga quais"):
+        script.modulos_a_escrever(colar, [])
+    with pytest.raises(SystemExit, match="versao propria de: modResumoOrlas"):
+        script.modulos_a_escrever(colar, ["modResumoOrlas"])
+    with pytest.raises(SystemExit, match="desconhecidos"):
+        script.modulos_a_escrever(colar, ["naoExiste"])
+    # O modelo de sempre continua a receber todos.
+    assert script.modulos_a_escrever(Path("Lista_Material_IMOS_MARTELO.xltm"), []) == script.MODULOS
+
+
 def test_veio_tambem_na_linha_sem_material() -> None:
     codigo = _codigo()
     inicio = codigo.index("Private Sub Converter_Veio_ListaOrdenada(")

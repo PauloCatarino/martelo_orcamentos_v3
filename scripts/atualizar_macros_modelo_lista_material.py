@@ -10,9 +10,10 @@ Requisitos:
     Ficheiro > Opcoes > Centro de Fidedignidade > Definicoes > Definicoes de macro.
 
 Uso:
-    python scripts/atualizar_macros_modelo_lista_material.py [caminho_do_xltm]
+    python scripts/atualizar_macros_modelo_lista_material.py [caminho_do_xltm] [modulo ...]
 
-Sem argumento, usa o modelo do servidor.
+Sem argumento, usa o modelo do servidor e escreve todos os modulos. No modelo
+COLAR e obrigatorio dizer os modulos (ver ``modulos_a_escrever``).
 """
 
 from __future__ import annotations
@@ -192,11 +193,42 @@ def atualizar_modelo(modelo: Path, modulos: tuple[str, ...] = MODULOS) -> list[s
     return trocados
 
 
+def modulos_a_escrever(modelo: Path, pedidos: list[str]) -> tuple[str, ...]:
+    """Os módulos a escrever; no modelo COLAR só os pedidos por nome.
+
+    O COLAR tem versões PRÓPRIAS de alguns módulos (``scripts/vba/colar``, p. ex.
+    o ``modResumoOrlas``): escrever-lhe os de ``scripts/vba`` apagava-as. Desde
+    19-11-2026 o COLAR é a Lista Material de todos e recebe o
+    ``modImportCSVImos_1`` por aqui:
+    ``python scripts/atualizar_macros_modelo_lista_material.py <COLAR.xltm> modImportCSVImos_1``.
+    """
+    if pedidos:
+        desconhecidos = [nome for nome in pedidos if nome not in MODULOS]
+        if desconhecidos:
+            raise SystemExit(f"Modulos desconhecidos: {', '.join(desconhecidos)}")
+        if "COLAR" in modelo.name.upper():
+            proprios = {f.stem for f in (PASTA_VBA / "colar").glob("*.bas")}
+            em_conflito = [nome for nome in pedidos if nome in proprios]
+            if em_conflito:
+                raise SystemExit(
+                    "O modelo COLAR tem versao propria de: " + ", ".join(em_conflito)
+                    + " (scripts/vba/colar). Use criar_modelo_lista_material_colar.py."
+                )
+        return tuple(pedidos)
+    if "COLAR" in modelo.name.upper():
+        raise SystemExit(
+            "No modelo COLAR diga quais os modulos a escrever (ex.: modImportCSVImos_1): "
+            "alguns tem versao propria em scripts/vba/colar."
+        )
+    return MODULOS
+
+
 def main() -> None:
     modelo = Path(sys.argv[1]) if len(sys.argv) > 1 else MODELO_SERVIDOR
+    modulos = modulos_a_escrever(modelo, sys.argv[2:])
     copia = criar_copia_seguranca(modelo)
     print(f"Copia de seguranca: {copia}")
-    trocados = atualizar_modelo(modelo)
+    trocados = atualizar_modelo(modelo, modulos)
     print(f"Modulos atualizados em {modelo}: {', '.join(trocados)}")
 
 
