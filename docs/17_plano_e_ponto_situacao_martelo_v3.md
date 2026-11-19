@@ -3390,12 +3390,59 @@ Guião de teste:
    «Orla depois de CNC»».
 8. Repor a base do iMos (`imos_le`).
 
-Por decidir (Paulo):
-- os perfis parecidos que já existem na base (`FRESAR_REC_VARADO_com_Orla_1mm`,
-  `FRESA_REC_VARADO_com_Orla_05mm`, `SERRA_RECORTES_VARADO`) também contam como recorte, ou só o
-  `FRESAR_RECORTES_VARADO`?
-- todas as arestas têm de ter o perfil, ou chegam as que não são a direito (num trapézio, a
-  serra corta os lados retos)? Por agora, exige todas.
+Decidido na ronda 3 (abaixo): os perfis parecidos contam; só as arestas que não são lados retos.
+
+### Lista única, ronda 3: lados retos, perfis de recorte e os passos 1 a 4 (2026-11-19, ENSAIO)
+
+Respostas do Paulo à ronda 2:
+- **Perfis de recorte aceites**: `FRESAR_RECORTES_VARADO`, `FRESAR_REC_VARADO_com_Orla_1mm`,
+  `FRESA_REC_VARADO_com_Orla_05mm` e `SERRA_RECORTES_VARADO` (`PERFIS_RECORTE`).
+- **Só as arestas que não são lados retos** precisam do perfil: os lados retos corta-os a serra.
+  A base do iMos não guarda os pontos do contorno (procurado em `IDBGEOM`, `IDBSPP`, CAM: nada),
+  por isso **lado reto = aresta com o comprimento ou a largura inteiros da peça** (folga 1 mm,
+  `PRFLEN`). Limite conhecido: um lado reto mais curto do que a peça (no Teto do TRIANGULO, o
+  lado de 253.9 de um trapézio 600 × 500) também aparece no aviso, e confirma-se à vista. A
+  caixa do Martelo diz isso.
+- Qualquer aresta com perfil de recorte tem de estar com «Orla depois de CNC» (1.º algarismo do
+  `PRFB` = 3). Na 1957, a aresta 2 do Teto, que o Paulo pôs com o perfil, tem `PRFB` 32, como
+  as 5 do Topo. Na ajuda do iMos não há nada sobre este código: confirmar no passo 6 abaixo.
+- **O ensaio segue os passos 1 a 4 da Lista Material_IMOS** (antes parava no AUTOMATION):
+  1. criar o Excel (com as preferências do assistente nas DEFENICOES, como a lista normal) e
+     importar a lista da base; 2. AUTOMATION; 3. **listas de ferragens** (a mesma janela
+     «Gerar listas iMOS»; as listas ficam na pasta da obra e o Martelo **copia-as** para a
+     subpasta `Ensaio_Lista_Base_iMos`, porque a macro só procura na pasta do próprio Excel;
+     depois a macro importa-as e o Martelo traz o custo); 4. o aviso do passo 4 e abre o Excel.
+     No ensaio a Análise da Lista Material nunca abre (abriria a lista da obra, não a de ensaio).
+  O código dos passos 3 e 4 é o mesmo para as duas listas (`_passos_3_e_4_lista_material`).
+
+Confirmado antes de entregar, numa pasta de obra falsa no meu scratchpad (nada no servidor):
+listas da 1957 geradas da TESTE02 (2_List_Ferragens, 4_Etiqueta_Palete, 5_Custo_Obra_Ferragens),
+Excel de ensaio a partir do modelo COLAR, importação, AUTOMATION, cópia das listas, macro das
+ferragens e custo: o Excel ficou com 1_FERRAGENS, 2_PURCH, 5_ETIQUETA_PALETE e
+5_Custo_Obra_Ferragens. Aviso na 1957 como está: só o Teto, «aresta(s) 3 (648.5 mm), 4 (253.9 mm)
+não é(são) lado(s) inteiro(s) da peça e não tem(têm) perfil de recorte».
+
+Guião de teste:
+
+1. Fechar o Martelo e voltar a abri-lo (pasta principal). Fechar o Excel de ensaio da 1957.
+2. **Configurações** → **Ligação iMos** → `imos_LE_TESTE02` → **Guardar configuração**.
+3. **Produção** → obra 1957_01_26 → **Funções** → **«Lista Material da base iMos (ensaio)…»**.
+   Caixa «… — passo 1 de 4», esperado: «ATENÇÃO: 1 peça(s) …» com o Teto, arestas 3 (648.5 mm)
+   e 4 (253.9 mm). **Yes**.
+4. Caixa «Atenção» das peças (com a frase do lado reto mais curto) → **OK** → caixa «Lista da base
+   iMos importada — passo 2 de 4» → **Yes**.
+5. Caixa «Listas de ferragens IMOS — passo 3 de 4» → **Yes** → na janela «Gerar listas iMOS»,
+   gerar as listas → fechar → a macro pergunta «Pretende importar…?» → **Sim** (e **Sim** a
+   substituir separadores, se perguntar). Esperado: o Excel de ensaio com 1_FERRAGENS, 2_PURCH,
+   5_ETIQUETA_PALETE e 5_Custo_Obra_Ferragens; na subpasta `Ensaio_Lista_Base_iMos`, cópias das
+   listas; na pasta da obra, as listas originais.
+6. Caixa do passo 4 → **OK** → abre o Excel.
+7. Confirmar a sequência: no iMos, no Teto do TRIANGULO, pôr o perfil `FRESAR_RECORTES_VARADO` na
+   aresta inclinada (648.5) com «Orla depois de CNC» e numa outra com «Orla antes de CNC» (ou o
+   outro valor da lista); gravar; repetir o passo 3. Esperado: «aresta(s) N (…) com perfil de
+   recorte mas sem «Orla depois de CNC»» só para essa. Se não aparecer, a leitura do `PRFB`
+   está errada: dizer-me o que aparece.
+8. Repor a base do iMos (`imos_le`).
 
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 

@@ -55,6 +55,7 @@ colunas (sem as Notas) e chega a pôr a nota de uma peça noutra (obra 1608_03, 
 from __future__ import annotations
 
 import csv
+import shutil
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -85,12 +86,27 @@ COLUNAS_CSV: tuple[str, ...] = COLUNAS_IMOS + COLUNAS_NOVAS
 # «Descricao», a da peça, é a que ela encontra primeiro).
 CABECALHO_CSV: dict[str, str] = {DESCRICAO_ARTIGO: "Descricao"}
 
-# Peças não retangulares (ISPEC <> 0): a forma faz-se na CNC. Cada aresta do contorno
-# tem de levar o perfil de recorte (o perfil tem o CAM da fresa) e a orla vem depois
-# da CNC. Na IDBPRF: PRFID = «Nome de perfil»; o 1.º algarismo do PRFB = «Sequência
-# de processamento» (3 = «Orla depois de CNC»; 1 = o normal, orla antes).
-PERFIS_RECORTE: tuple[str, ...] = ("FRESAR_RECORTES_VARADO",)
+# Peças não retangulares (ISPEC <> 0): a forma faz-se na CNC. Os lados retos corta-os
+# a serra; os outros têm de levar um perfil de recorte (o perfil tem o CAM da fresa) e
+# a orla vem depois da CNC. Na IDBPRF: PRFID = «Nome de perfil»; o 1.º algarismo do
+# PRFB = «Sequência de processamento» (3 = «Orla depois de CNC»; 1 = o normal).
+# Perfis de recorte aceites (o Paulo, 19-11-2026: todos os que existem na base).
+PERFIS_RECORTE: tuple[str, ...] = (
+    "FRESAR_RECORTES_VARADO",
+    "FRESAR_REC_VARADO_com_Orla_1mm",
+    "FRESA_REC_VARADO_com_Orla_05mm",
+    "SERRA_RECORTES_VARADO",
+)
 SEQUENCIA_ORLA_DEPOIS_CNC = "3"
+# A base não guarda os pontos do contorno: um lado reto que a serra corta é uma aresta
+# com o comprimento ou a largura inteiros da peça (com esta folga, em mm).
+FOLGA_LADO_RETO_MM = 1.0
+# As listas de ferragens que a macro ImportarListasFerragensIMOS_14 procura na pasta
+# do Excel (e o custo, que o Martelo importa a seguir).
+LISTAS_FERRAGENS: tuple[str, ...] = (
+    "2_List_Ferragens", "3_Resumo_Precos", "4_Etiqueta_Palete",
+    "5_List_Ferragens_Integrador", "5_Custo_Obra_Ferragens",
+)
 
 # A frente de gaveta em U (multipeça): descrição da linha da mãe na lista.
 DESCRICAO_FRENTE_U = "Frente Gaveta |U|"
@@ -225,7 +241,8 @@ def ler_obra(
     )
     orlas = executar(
         cfg,
-        f"SELECT ID, PRFNO, PRFNAME, PRFID, PRFB, PTYPE FROM IDBPRF WHERE ORDERID = {obra}",
+        "SELECT ID, PRFNO, PRFNAME, PRFID, PRFB, PRFLEN, PTYPE FROM IDBPRF "
+        f"WHERE ORDERID = {obra}",
     )
     programas = executar(
         cfg,
@@ -344,16 +361,28 @@ def artigo_composto(artigo_nome: str, sub_artigo: str, descricao: str) -> str:
     return "_".join(p for p in partes if p)
 
 
-def _falhas_forma(arestas: list[dict]) -> list[str]:
+def _e_lado_reto(aresta: dict, comp: float, larg: float) -> bool:
+    """A aresta é um lado inteiro da peça (a serra corta-o): tem o comp. ou a larg."""
+    medida = _numero(aresta.get("PRFLEN"))
+    return any(abs(medida - lado) <= FOLGA_LADO_RETO_MM for lado in (comp, larg) if lado)
+
+
+def _falhas_forma(arestas: list[dict], comp: float = 0.0, larg: float = 0.0) -> list[str]:
     """O que falta às arestas de uma peça não retangular para a CNC lhe dar a forma.
 
-    Todas as arestas do contorno (``PTYPE`` diferente de «I») têm de ter o perfil de
-    recorte (``PERFIS_RECORTE``) com a «Sequência de processamento» «Orla depois de CNC».
+    Regra do Paulo (19-11-2026): os lados retos corta-os a serra; as outras arestas do
+    contorno (``PTYPE`` diferente de «I») têm de ter um perfil de recorte
+    (``PERFIS_RECORTE``). Qualquer aresta com perfil de recorte tem de estar com
+    «Orla depois de CNC». Como a base não tem os pontos do contorno, lado reto = aresta
+    com o comprimento ou a largura inteiros da peça: um lado reto mais curto (ex.: o
+    lado de 253.9 de um trapézio de 600 x 500) aparece no aviso e confirma-se à vista.
     """
     if not arestas:
         return ["sem arestas na base"]
-    sem_perfil = [a for a in arestas if _texto(a.get("PRFID")) not in PERFIS_RECORTE]
-    com_perfil = [a for a in arestas if a not in sem_perfil]
+    com_perfil = [a for a in arestas if _texto(a.get("PRFID")) in PERFIS_RECORTE]
+    sem_perfil = [
+        a for a in arestas if a not in com_perfil and not _e_lado_reto(a, comp, larg)
+    ]
     sequencia_errada = [
         a for a in com_perfil
         if not _texto(a.get("PRFB")).startswith(SEQUENCIA_ORLA_DEPOIS_CNC)
@@ -361,19 +390,47 @@ def _falhas_forma(arestas: list[dict]) -> list[str]:
     falhas = []
 
     def lados(lista: list[dict]) -> str:
-        numeros = sorted(_inteiro(a.get("PRFNO")) for a in lista)
-        return ", ".join(str(n) for n in numeros)
+        ordenadas = sorted(lista, key=lambda a: _inteiro(a.get("PRFNO")))
+        return ", ".join(
+            f"{_inteiro(a.get('PRFNO'))} ({_numero(a.get('PRFLEN')):.1f} mm)"
+            if _texto(a.get("PRFLEN")) else str(_inteiro(a.get("PRFNO")))
+            for a in ordenadas
+        )
 
     if sem_perfil:
         falhas.append(
-            f"aresta(s) {lados(sem_perfil)} de {len(arestas)} sem o perfil "
-            f"{' / '.join(PERFIS_RECORTE)}"
+            f"aresta(s) {lados(sem_perfil)} não é(são) lado(s) inteiro(s) da peça e "
+            "não tem(têm) perfil de recorte"
         )
     if sequencia_errada:
         falhas.append(
-            f"aresta(s) {lados(sequencia_errada)} sem «Orla depois de CNC»"
+            f"aresta(s) {lados(sequencia_errada)} com perfil de recorte mas sem "
+            "«Orla depois de CNC»"
         )
     return falhas
+
+
+def copiar_listas_ferragens(pasta_obra: Path, pasta_ensaio: Path) -> list[Path]:
+    """Copia as listas de ferragens da pasta da obra para a pasta do Excel de ensaio.
+
+    A macro ImportarListasFerragensIMOS_14 só procura na pasta do próprio Excel, e o
+    de ensaio está na subpasta ``PASTA_ENSAIO``. Copia (não move) a mais recente de
+    cada lista; as da pasta da obra ficam onde estavam.
+    """
+    pasta_obra, pasta_ensaio = Path(pasta_obra), Path(pasta_ensaio)
+    copiadas: list[Path] = []
+    for nome in LISTAS_FERRAGENS:
+        candidatas = [
+            p for p in pasta_obra.glob(f"{nome}*.xls*")
+            if p.is_file() and not p.name.startswith("~$")
+        ]
+        if not candidatas:
+            continue
+        origem = max(candidatas, key=lambda p: p.stat().st_mtime)
+        destino = pasta_ensaio / origem.name
+        shutil.copy2(origem, destino)
+        copiadas.append(destino)
+    return copiadas
 
 
 def _e_frente_u(peca: dict, maes_com_filhas: set[int]) -> bool:
@@ -450,7 +507,9 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
             linhas[chave] = LinhaCorte(colunas=colunas, mae=mae)
         linhas[chave].qt += quantidade
         if not mae and _inteiro(peca.get("ISPEC")) != 0:
-            for falha in _falhas_forma(arestas.get(id_peca, [])):
+            for falha in _falhas_forma(
+                arestas.get(id_peca, []), _numero(peca.get("CLENG")), _numero(peca.get("CWIDTH"))
+            ):
                 if falha not in linhas[chave].falhas_forma:
                     linhas[chave].falhas_forma.append(falha)
     # Como o .cfg (POSITION_SORT): por posição; dentro dela, pela ordem das peças.
@@ -703,7 +762,7 @@ def gravar_ensaio(
         texto.append(
             f"ATENÇÃO: {len(sem_cam)} peça(s) não retangular(es) que a CNC não vai "
             "recortar (falta o CAM, ou o perfil de recorte / «Orla depois de CNC» "
-            "nas arestas):"
+            "nas arestas que não são lados retos):"
         )
         texto.extend(f"  - {p}" for p in sem_cam)
     texto.append(

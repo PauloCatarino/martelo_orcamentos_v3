@@ -59,6 +59,7 @@ def test_passo_4_suprimido_avisa_e_abre_o_excel(monkeypatch, tmp_path) -> None:
             return 4
 
         _importar_listas_ferragens = ProducaoPage._importar_listas_ferragens
+        _passos_3_e_4_lista_material = ProducaoPage._passos_3_e_4_lista_material
 
     page = _Page()
     ProducaoPage._oferecer_fluxo_inicial_lista_material(page, object(), workbook_path)
@@ -132,6 +133,8 @@ def test_resposta_nao_no_passo_4_abre_o_excel_para_trabalho(
         def _rever_lista_material_assistente(self, *_args, **_kwargs):
             raise AssertionError("O assistente não deve abrir quando a resposta é Não.")
 
+        _passos_3_e_4_lista_material = ProducaoPage._passos_3_e_4_lista_material
+
     page = _Page()
     ProducaoPage._oferecer_fluxo_inicial_lista_material(
         page,
@@ -194,6 +197,7 @@ def test_importacao_ferragens_ocorre_antes_do_assistente(monkeypatch, tmp_path) 
             return 4
 
         _importar_listas_ferragens = ProducaoPage._importar_listas_ferragens
+        _passos_3_e_4_lista_material = ProducaoPage._passos_3_e_4_lista_material
 
     ProducaoPage._oferecer_fluxo_inicial_lista_material(
         _Page(), object(), workbook_path
@@ -377,9 +381,11 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert 'self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))' in init_source
     assert "self.lista_material_button.clicked.connect(self._lista_material_imos)" in init_source
     assert "Gerar o Excel 'Lista Material_IMOS' na pasta do processo" in init_source
+    # Os passos 3 e 4 ficam num método próprio, partilhado com a lista de ensaio.
     workflow_source = inspect.getsource(
         ProducaoPage._oferecer_fluxo_inicial_lista_material
-    )
+    ) + inspect.getsource(ProducaoPage._passos_3_e_4_lista_material)
+    assert "self._passos_3_e_4_lista_material(processo, workbook_path)" in workflow_source
     assert "execute_import_csv_imos_macro" in workflow_source
     assert "execute_automation_cutrite_macro" in workflow_source
     assert "self._importar_listas_ferragens(workbook_path)" in workflow_source
@@ -816,3 +822,20 @@ def test_tratar_encomenda_existente_chama_nova_versao_da_mais_recente(monkeypatc
     assert "26.1134_01_01_CLIENTE" in chamadas["informative"]
     assert "Novo Modelo/Versão" in [text for text, _role in chamadas["buttons"]]
     assert executadas == [2]
+
+
+def test_lista_de_ensaio_segue_os_passos_da_lista_material() -> None:
+    """19-11-2026: o ensaio da base iMos faz os mesmos passos 1 a 4 (com as ferragens)."""
+    from app.ui.pages.producao_page import ProducaoPage
+
+    fonte = inspect.getsource(ProducaoPage._lista_material_base_imos)
+    assert "self._juntar_config_assistente(values)" in fonte
+    assert "passo 1 de 4" in fonte and "passo 2 de 4" in fonte
+    assert "lista_base_imos.copiar_listas_ferragens(" in fonte
+    assert "antes_de_importar=copiar_listas, ensaio=True" in fonte
+    passos = inspect.getsource(ProducaoPage._passos_3_e_4_lista_material)
+    # As listas copiam-se depois de geradas e antes da macro que as importa.
+    assert passos.index("antes_de_importar()") < passos.index(
+        "self._importar_listas_ferragens(workbook_path)"
+    )
+    assert "PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO and not ensaio" in passos

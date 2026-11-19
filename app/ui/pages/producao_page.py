@@ -2583,52 +2583,9 @@ class ProducaoPage(QWidget):
                 return
             substituir = True
 
-        user_id = int(getattr(app_session.current_user, "id", 0) or 0)
-        try:
-            with SessionLocal() as session:
-                assistant_service = ListaMaterialAssistantService(
-                    session,
-                    board_catalog=WoodstoreBoardCatalogProvider(
-                        lambda: query_woodstore(session)
-                    ),
-                )
-                # O assistente já não abre aqui: ao criar o Excel o Martelo
-                # ainda não sabe se a obra tem portas, CNC_FRESAR ou remates,
-                # e as perguntas não serviam de nada. Usam-se em silêncio as
-                # preferências guardadas para o utilizador/cliente; a
-                # configuração passa a ser feita onde tem efeito, na Análise.
-                assistant_config = assistant_service.resolve_config(
-                    user_id=user_id,
-                    client=values["NOME_CLIENTE_SIMPLEX"] or values["NOME_CLIENTE"],
-                    production_description=values["DESCRICAO_PRODUCAO"],
-                )
-        except SQLAlchemyError as error:
-            QMessageBox.critical(
-                self,
-                "Assistente Lista Material",
-                "Não foi possível carregar as preferências do assistente. "
-                "Confirme que a migração 20260821_91 foi aplicada.\n\n"
-                f"Detalhe: {error}",
-            )
+        assistant_config = self._juntar_config_assistente(values)
+        if assistant_config is None:
             return
-
-        values.update(
-            {
-                "ASSISTENTE_PUXADOR": assistant_config.handle,
-                "ASSISTENTE_PUXADOR_EXCECOES": "; ".join(
-                    f"{key}={value}"
-                    for key, value in assistant_config.handle_exceptions.items()
-                ),
-                "ASSISTENTE_LACAGEM_FORMAL": (
-                    "Ativa" if assistant_config.formal_lacquering else "Desativada"
-                ),
-                "ASSISTENTE_MODULOS": ", ".join(
-                    name for name, enabled in assistant_config.modules.items() if enabled
-                ),
-                "ASSISTENTE_BOARD_AVAILABLE": assistant_config.board_catalog_available,
-                "ASSISTENTE_BOARD_MESSAGE": assistant_config.board_catalog_message,
-            }
-        )
         # Recriar o contexto para transportar a configuração escolhida para o Excel.
         with SessionLocal() as session:
             context = prepare_lista_material_imos(
@@ -2701,6 +2658,60 @@ class ProducaoPage(QWidget):
         else:
             self.status_label.setText(f"Lista Material criada{com_colar}.")
         self._oferecer_fluxo_inicial_lista_material(processo, output_path)
+
+    def _juntar_config_assistente(self, values: dict):
+        """Junta aos ``values`` do Excel as preferências do assistente; devolve-as.
+
+        Devolve None (e avisa) quando não se conseguem ler. Usado pela Lista
+        Material_IMOS e pela lista de ensaio da base iMos (as mesmas DEFENICOES).
+        """
+        user_id = int(getattr(app_session.current_user, "id", 0) or 0)
+        try:
+            with SessionLocal() as session:
+                assistant_service = ListaMaterialAssistantService(
+                    session,
+                    board_catalog=WoodstoreBoardCatalogProvider(
+                        lambda: query_woodstore(session)
+                    ),
+                )
+                # O assistente já não abre aqui: ao criar o Excel o Martelo
+                # ainda não sabe se a obra tem portas, CNC_FRESAR ou remates,
+                # e as perguntas não serviam de nada. Usam-se em silêncio as
+                # preferências guardadas para o utilizador/cliente; a
+                # configuração passa a ser feita onde tem efeito, na Análise.
+                assistant_config = assistant_service.resolve_config(
+                    user_id=user_id,
+                    client=values["NOME_CLIENTE_SIMPLEX"] or values["NOME_CLIENTE"],
+                    production_description=values["DESCRICAO_PRODUCAO"],
+                )
+        except SQLAlchemyError as error:
+            QMessageBox.critical(
+                self,
+                "Assistente Lista Material",
+                "Não foi possível carregar as preferências do assistente. "
+                "Confirme que a migração 20260821_91 foi aplicada.\n\n"
+                f"Detalhe: {error}",
+            )
+            return None
+
+        values.update(
+            {
+                "ASSISTENTE_PUXADOR": assistant_config.handle,
+                "ASSISTENTE_PUXADOR_EXCECOES": "; ".join(
+                    f"{key}={value}"
+                    for key, value in assistant_config.handle_exceptions.items()
+                ),
+                "ASSISTENTE_LACAGEM_FORMAL": (
+                    "Ativa" if assistant_config.formal_lacquering else "Desativada"
+                ),
+                "ASSISTENTE_MODULOS": ", ".join(
+                    name for name, enabled in assistant_config.modules.items() if enabled
+                ),
+                "ASSISTENTE_BOARD_AVAILABLE": assistant_config.board_catalog_available,
+                "ASSISTENTE_BOARD_MESSAGE": assistant_config.board_catalog_message,
+            }
+        )
+        return assistant_config
 
     def _valores_definicoes_lista_material(self, nome_enc: str) -> dict:
         """Os dados da obra que vão para a folha DEFENICOES do Excel."""
@@ -2795,9 +2806,9 @@ class ProducaoPage(QWidget):
 
         criar = QMessageBox.question(
             self,
-            titulo,
+            f"{titulo} — passo 1 de 4",
             f"{ensaio.resumo}\n\nFicheiros na pasta:\n{ensaio.pasta}\n\n"
-            "Criar agora o Excel de ensaio com esta lista?\n\n"
+            "Criar agora o Excel de ensaio com esta lista e importá-la?\n\n"
             f"Fica em «{ensaio.excel.name}», na mesma subpasta. A Lista Material "
             "da obra não é tocada. O Excel fica visível para responder às "
             "perguntas da macro, como na importação normal.",
@@ -2811,6 +2822,10 @@ class ProducaoPage(QWidget):
             )
             return
 
+        values = self._valores_definicoes_lista_material(nome_enc)
+        # As mesmas DEFENICOES da Lista Material_IMOS, com as preferências do assistente.
+        if self._juntar_config_assistente(values) is None:
+            return
         try:
             with SessionLocal() as session:
                 # 19-11-2026: o modelo COLAR (o da Lista Material_IMOS), para a
@@ -2819,7 +2834,7 @@ class ProducaoPage(QWidget):
                     session,
                     processo_id=processo.id,
                     nome_enc_imos=nome_enc,
-                    values=self._valores_definicoes_lista_material(nome_enc),
+                    values=values,
                     template_filename=TEMPLATE_FILENAME_COLAR,
                 )
         except ValueError as error:
@@ -2874,35 +2889,55 @@ class ProducaoPage(QWidget):
             return
 
         self._avisar_pecas_forma_sem_cam(titulo, linhas)
+        # Daqui em diante, os mesmos passos da Lista Material_IMOS (19-11-2026).
         preencher = QMessageBox.question(
             self,
-            titulo,
+            "Lista da base iMos importada — passo 2 de 4",
             "A LISTA_ORDENADA do Excel de ensaio foi preenchida.\n\nPretende "
             "executar agora a transformação AUTOMATION para preencher a "
             "LISTAGEM_CUT_RITE (a mesma macro do botão AUTOMATION)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
-        if preencher == QMessageBox.StandardButton.Yes:
-            self.status_label.setText("A preencher a LISTAGEM_CUT_RITE do Excel de ensaio...")
-            QApplication.processEvents()
+        if preencher != QMessageBox.StandardButton.Yes:
+            self.status_label.setText(
+                f"Excel de ensaio com a lista importada; AUTOMATION pendente ({estado})."
+            )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(ensaio.excel)))
+            return
+        self.status_label.setText("A preencher a LISTAGEM_CUT_RITE do Excel de ensaio...")
+        QApplication.processEvents()
+        try:
+            execute_automation_cutrite_macro(ensaio.excel)
+        except Exception as error:  # Excel COM / macro VBA
+            self.status_label.setText("A transformação AUTOMATION não foi concluída.")
+            QMessageBox.warning(
+                self, titulo,
+                f"Não foi possível concluir a transformação.\n\nDetalhe: {error}",
+            )
+            return
+
+        def copiar_listas() -> None:
+            # A macro procura as listas na pasta do Excel; o de ensaio está numa
+            # subpasta, e o Martelo gera-as na pasta da obra.
             try:
-                execute_automation_cutrite_macro(ensaio.excel)
-            except Exception as error:  # Excel COM / macro VBA
-                self.status_label.setText("A transformação AUTOMATION não foi concluída.")
+                copiadas = lista_base_imos.copiar_listas_ferragens(
+                    Path(pasta_obra), ensaio.pasta
+                )
+            except OSError as error:
                 QMessageBox.warning(
                     self, titulo,
-                    f"Não foi possível concluir a transformação.\n\nDetalhe: {error}",
+                    "Não foi possível copiar as listas de ferragens da pasta da obra "
+                    f"para a pasta do ensaio.\n\nDetalhe: {error}",
                 )
                 return
-
-        self.status_label.setText(
-            f"Excel de ensaio pronto ({estado}): {ensaio.excel.name}."
-        )
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(ensaio.excel))):
-            QMessageBox.warning(
-                self, titulo, f"Não foi possível abrir o Excel:\n{ensaio.excel}"
+            self.status_label.setText(
+                f"{len(copiadas)} lista(s) de ferragens copiada(s) para a pasta do ensaio."
             )
+
+        self._passos_3_e_4_lista_material(
+            processo, ensaio.excel, antes_de_importar=copiar_listas, ensaio=True
+        )
 
     def _avisar_pecas_forma_sem_cam(self, titulo: str, linhas) -> None:
         """Peças não retangulares (ISPEC <> 0) que a CNC não vai recortar: avisar antes do AUTOMATION."""
@@ -2918,10 +2953,12 @@ class ProducaoPage(QWidget):
             titulo,
             f"Atenção: {len(avisos)} peça(s) NÃO retangular(es) que a CNC não vai "
             "recortar.\n\n"
-            "Estas peças têm uma forma especial: a fresa da CNC é que lhes dá a forma. "
-            f"Para isso precisam de programa CAM e de ter, em todas as arestas, o perfil "
-            f"{perfis} com a sequência «Orla depois de CNC». Sem isso eram cortadas "
-            "retangulares:\n\n"
+            "Estas peças têm uma forma especial: os lados retos corta-os a serra, os "
+            "outros dá-lhes a fresa da CNC. Para isso precisam de programa CAM e, nas "
+            f"arestas que não são lados retos, de um perfil de recorte ({perfis}) com a "
+            "sequência «Orla depois de CNC». Sem isso eram cortadas retangulares.\n"
+            "(Um lado reto mais curto do que a peça também aparece: confirme-o à vista.)"
+            "\n\n"
             + "\n".join(f"- {a}" for a in mostrar)
             + "\n\nCorrija no iMos, gere o CAM e volte a fazer a lista, ou confirme "
             "estas peças antes de enviar para o Cut-Rite.",
@@ -3079,6 +3116,23 @@ class ProducaoPage(QWidget):
             )
             return
 
+        self._passos_3_e_4_lista_material(processo, workbook_path)
+
+    def _passos_3_e_4_lista_material(
+        self,
+        processo: Producao,
+        workbook_path: Path,
+        *,
+        antes_de_importar=None,
+        ensaio: bool = False,
+    ) -> None:
+        """Passo 3 (listas de ferragens) e passo 4 (análise) da Lista Material.
+
+        Os mesmos para a Lista Material_IMOS e para a lista de ensaio da base iMos
+        (pedido do Paulo, 19-11-2026: o ensaio tem de seguir os passos todos).
+        ``antes_de_importar`` corre depois de gerar as listas e antes da macro (o
+        ensaio copia as listas da pasta da obra para a subpasta do Excel dele).
+        """
         importar_listas = QMessageBox.question(
             self,
             "Listas de ferragens IMOS — passo 3 de 4",
@@ -3095,6 +3149,8 @@ class ProducaoPage(QWidget):
         )
         if importar_listas == QMessageBox.StandardButton.Yes:
             self._gerar_listas_imos(processo, depois_importa=True)
+            if antes_de_importar is not None:
+                antes_de_importar()
             if self._importar_listas_ferragens(workbook_path):
                 self.status_label.setText(
                     "Listas de ferragens processadas; falta o passo 4."
@@ -3104,7 +3160,8 @@ class ProducaoPage(QWidget):
                 "Importação das listas de ferragens ignorada; falta o passo 4."
             )
 
-        if PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO:
+        if PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO and not ensaio:
+            # No ensaio não: a Análise abre a Lista Material da obra, não a de ensaio.
             analisar = QMessageBox.question(
                 self,
                 "LISTAGEM_CUT_RITE preenchida — passo 4 de 4",

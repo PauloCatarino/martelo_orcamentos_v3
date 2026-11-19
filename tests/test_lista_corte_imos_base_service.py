@@ -218,54 +218,94 @@ def test_aviso_das_pecas_nao_retangulares_sem_cam():
     assert any(a.startswith("Topo") and "mais de 4 lados" in a for a in avisos)
 
 
-def _aresta(pid, n, perfil="FRESAR_RECORTES_VARADO", prfb="32", ptype="O"):
+def _aresta(pid, n, comp, perfil="FRESAR_RECORTES_VARADO", prfb="32", ptype="O"):
     return {"ID": pid, "PRFNO": n, "PRFNAME": "CNC_FRESAR", "PRFID": perfil,
-            "PRFB": prfb, "PTYPE": ptype}
+            "PRFB": prfb, "PRFLEN": comp, "PTYPE": ptype}
 
 
-def _peca_forma(arestas, com_cam=True):
+def _teto(arestas, com_cam=True):
+    """Como o Teto do TRIANGULO (obra 1957_01_26): trapézio de 600 x 500."""
     return _dados(
-        pecas=[_peca(1, "Topo", ispec=2)],
-        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "RP_01"},
+        pecas=[_peca(1, "Teto", ispec=1, comp=599.9, larg=499.96)],
+        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "TRIANGULO"},
                 {"ID": 1, "TYP": 4, "ARTID": 0, "ASSID": 100, "NAME": "x"}],
         orlas=arestas,
         programas=[{"PARTID": 1, "PROGRAMID": "p", "SEQUENCENUM": 1,
-                    "ATTRIBUTE": "ncnum", "ATTRVALUE": "10099"}] if com_cam else [],
+                    "ATTRIBUTE": "ncnum", "ATTRVALUE": "10012"}] if com_cam else [],
     )
 
 
-def test_forma_com_cam_e_perfil_de_recorte_em_todas_as_arestas_nao_avisa():
-    # Como o Topo da obra 1957_01_26: 5 arestas FRESAR_RECORTES_VARADO, PRFB 32.
-    dados = _peca_forma([_aresta(1, n) for n in range(1, 6)] + [_aresta(1, 9, "RASGO", "11", "I")])
-    assert svc.pecas_forma_sem_cam(svc.montar_lista(dados)) == []
+MEDIDAS_TETO = (600, 500, 648.5153, 253.886)
+
+
+def test_forma_so_os_lados_que_nao_sao_retos_precisam_do_perfil():
+    # Lados retos (600 e 500) sem perfil: a serra corta-os. O de 648.5 tem o perfil.
+    arestas = [_aresta(1, 1, 600, "PRF_00", "12"), _aresta(1, 2, 500, "PRF_00", "12"),
+               _aresta(1, 3, 648.5153), _aresta(1, 4, 253.886)]
+    assert svc.pecas_forma_sem_cam(svc.montar_lista(_teto(arestas))) == []
 
 
 def test_forma_com_cam_so_de_furos_avisa_das_arestas_sem_perfil():
-    # Como o Teto do TRIANGULO: tem CAM (furos), mas as arestas ficaram com o PRF_00.
-    dados = _peca_forma([_aresta(1, n, "PRF_00", "12") for n in range(1, 5)])
-    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    # O Teto como está na 1957 a 19-11: só a aresta 2 (500) com o perfil.
+    arestas = [_aresta(1, n, m, "PRF_00", "12") for n, m in enumerate(MEDIDAS_TETO, 1)]
+    arestas[1] = _aresta(1, 2, 500)
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(_teto(arestas)))
     assert "sem programa CAM" not in aviso
-    assert "aresta(s) 1, 2, 3, 4 de 4 sem o perfil FRESAR_RECORTES_VARADO" in aviso
+    # A 1 (600) é um lado inteiro: não entra. A 4 (253.9) é reta mas mais curta: entra.
+    assert "aresta(s) 3 (648.5 mm), 4 (253.9 mm) não é(são) lado(s) inteiro(s)" in aviso
+
+
+@pytest.mark.parametrize("perfil", svc.PERFIS_RECORTE)
+def test_todos_os_perfis_de_recorte_contam(perfil):
+    arestas = [_aresta(1, 1, 600, "PRF_00", "12"), _aresta(1, 2, 500, "PRF_00", "12"),
+               _aresta(1, 3, 648.5153, perfil), _aresta(1, 4, 253.886, perfil)]
+    assert svc.pecas_forma_sem_cam(svc.montar_lista(_teto(arestas))) == []
 
 
 def test_forma_com_perfil_mas_orla_antes_do_cnc_avisa():
-    arestas = [_aresta(1, 1), _aresta(1, 2, prfb="12"), _aresta(1, 3, prfb="11"),
-               _aresta(1, 4, "PRF_00", "12")]
-    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(_peca_forma(arestas)))
-    assert "aresta(s) 4 de 4 sem o perfil" in aviso
-    assert "aresta(s) 2, 3 sem «Orla depois de CNC»" in aviso
+    arestas = [_aresta(1, 1, 600, prfb="12"), _aresta(1, 2, 500, "PRF_00", "12"),
+               _aresta(1, 3, 648.5153, prfb="11"), _aresta(1, 4, 253.886)]
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(_teto(arestas)))
+    assert "não é(são) lado(s) inteiro(s)" not in aviso
+    assert "aresta(s) 1 (600.0 mm), 3 (648.5 mm) com perfil de recorte mas sem «Orla depois de CNC»" in aviso
 
 
 def test_forma_sem_cam_e_sem_perfil_diz_as_duas_coisas():
-    dados = _peca_forma([_aresta(1, n, "PRF_00", "12") for n in range(1, 5)], com_cam=False)
-    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
-    assert "sem programa CAM" in aviso and "sem o perfil" in aviso
+    arestas = [_aresta(1, n, m, "PRF_00", "12") for n, m in enumerate(MEDIDAS_TETO, 1)]
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(_teto(arestas, com_cam=False)))
+    assert "sem programa CAM" in aviso and "perfil de recorte" in aviso
+
+
+def test_perfis_interiores_nao_contam():
+    arestas = [_aresta(1, 1, 600, "PRF_00", "12"), _aresta(1, 2, 500, "PRF_00", "12"),
+               _aresta(1, 3, 648.5153), _aresta(1, 4, 253.886),
+               _aresta(1, 9, 100, "RASGO", "11", "I")]
+    assert svc.pecas_forma_sem_cam(svc.montar_lista(_teto(arestas))) == []
 
 
 def test_peca_retangular_nao_e_vista():
-    dados = _peca_forma([_aresta(1, n, "PRF_00", "12") for n in range(1, 5)], com_cam=False)
+    arestas = [_aresta(1, n, m, "PRF_00", "12") for n, m in enumerate(MEDIDAS_TETO, 1)]
+    dados = _teto(arestas, com_cam=False)
     dados.pecas[0]["ISPEC"] = 0
     assert svc.pecas_forma_sem_cam(svc.montar_lista(dados)) == []
+
+
+def test_copiar_listas_ferragens_para_o_ensaio(tmp_path):
+    import os
+    obra, ensaio = tmp_path / "obra", tmp_path / "obra" / svc.PASTA_ENSAIO
+    ensaio.mkdir(parents=True)
+    (obra / "2_List_Ferragens.xlsx").write_bytes(b"a")
+    antiga = obra / "5_Custo_Obra_Ferragens_antiga.xlsx"
+    antiga.write_bytes(b"velha")
+    os.utime(antiga, (1, 1))
+    (obra / "5_Custo_Obra_Ferragens.xlsx").write_bytes(b"nova")
+    (obra / "~$2_List_Ferragens.xlsx").write_bytes(b"lock")
+    (obra / "Lista_Material_X.xlsm").write_bytes(b"x")
+    copiadas = svc.copiar_listas_ferragens(obra, ensaio)
+    assert sorted(p.name for p in copiadas) == ["2_List_Ferragens.xlsx", "5_Custo_Obra_Ferragens.xlsx"]
+    assert (ensaio / "5_Custo_Obra_Ferragens.xlsx").read_bytes() == b"nova"
+    # Copia, não move.
+    assert (obra / "2_List_Ferragens.xlsx").exists()
 
 
 def test_programas_cnc_sem_dummy_nem_espelhados():
