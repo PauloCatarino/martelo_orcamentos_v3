@@ -51,10 +51,10 @@ def test_sub_artigo_leva_o_piso_do_artigo_principal():
     assert frente.valor("Artigo/SubArtigo") == "BL_GVT"
     assert frente.valor("ArtigoNome") == "RP_01"
     # O «Name» do gaveteiro é o número dele (como o 49187 da APAGAR_14): o piso é o do RP.
-    assert frente.valor("Piso") == "R/C"
+    assert frente.valor(svc.DESCRICAO_ARTIGO) == "R/C"
     lateral = linhas["Lateral"]
     assert lateral.valor("Artigo/SubArtigo") == "RP_01"
-    assert lateral.valor("Piso") == "R/C"
+    assert lateral.valor(svc.DESCRICAO_ARTIGO) == "R/C"
     assert lateral.valor("RP") == "RP_01"
 
 
@@ -77,7 +77,7 @@ def test_artigo_pendurado_pelo_artid_tambem_sobe_ao_principal():
     assert linha.valor("ArtigoNome") == "RP_01"
     assert linha.valor("Artigo/SubArtigo") == "AT"
     assert linha.qt == 2  # a quantidade do artigo principal multiplica
-    assert linha.valor("Piso") == ""  # "." não é piso
+    assert linha.valor(svc.DESCRICAO_ARTIGO) == ""  # "." não é piso
 
 
 def test_artigo_com_quantidade_zero_da_linha_com_qt_zero():
@@ -113,7 +113,8 @@ def test_colunas_do_iMos():
         "1608", "CLIENTE_X", "RP_01", "Rasgo",
     ]
     assert linha.valor("ISPEC") == "2"
-    assert linha.valor("Artigo") == "RP_01"
+    assert linha.valor("Artigo") == "RP_01_R/C"
+    assert linha.valor("Posicao") == "RP_01"
 
 
 def test_saem_as_cinco_colunas_que_ninguem_usava():
@@ -123,9 +124,13 @@ def test_saem_as_cinco_colunas_que_ninguem_usava():
 
 
 @pytest.mark.parametrize("nome, sub, desc, esperado", [
-    ("RP_01", "RP_01", "Lateral", "RP_01"),
-    ("RP_01", "BL_GVT", "Frente de gaveta", "RP_01_BL_GVT_Frente de gaveta"),
-    ("RP_01", "", "Lateral", "RP_01"),
+    # Os casos do Excel da obra 1957_01_26 (editado pelo Paulo a 19-11-2026).
+    ("RP_A_01", "RP_A_01", "MENINA", "RP_A_01_MENINA"),
+    ("RP_A_01", "GV1", "MENINA", "RP_A_01_GV1_MENINA"),
+    ("TRIANGULO", "TRIANGULO", "PECA_3LADOS", "TRIANGULO_PECA_3LADOS"),
+    ("Peça de contorno", "Peça de contorno", "HEXAGUNO", "Peça de contorno_HEXAGUNO"),
+    ("RP_01", "", "", "RP_01"),
+    ("RP_01", "BL_GVT", "", "RP_01_BL_GVT"),
 ])
 def test_artigo_composto(nome, sub, desc, esperado):
     assert svc.artigo_composto(nome, sub, desc) == esperado
@@ -133,8 +138,8 @@ def test_artigo_composto(nome, sub, desc, esperado):
 
 def test_coluna_artigo_da_lista():
     linhas = _por_descricao(svc.montar_lista(_dados()))
-    assert linhas["Lateral"].valor("Artigo") == "RP_01"
-    assert linhas["Frente de gaveta"].valor("Artigo") == "RP_01_BL_GVT_Frente de gaveta"
+    assert linhas["Lateral"].valor("Artigo") == "RP_01_R/C"
+    assert linhas["Frente de gaveta"].valor("Artigo") == "RP_01_BL_GVT_R/C"
     # O RP continua lá, para a macro corrigir os rasgos por posição.
     assert linhas["Frente de gaveta"].valor("RP") == "RP_01"
 
@@ -207,9 +212,60 @@ def test_aviso_das_pecas_nao_retangulares_sem_cam():
         ],
     )
     avisos = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
-    assert len(avisos) == 2
-    assert any(a.startswith("Teto (600.0 x 500.0") and "4 lados, não retangular" in a for a in avisos)
+    assert len(avisos) == 3  # o Fundo tem CAM mas não tem arestas de recorte
+    assert any(a.startswith("Teto (600.0 x 500.0") and "4 lados, não retangular" in a
+               and "sem programa CAM" in a for a in avisos)
     assert any(a.startswith("Topo") and "mais de 4 lados" in a for a in avisos)
+
+
+def _aresta(pid, n, perfil="FRESAR_RECORTES_VARADO", prfb="32", ptype="O"):
+    return {"ID": pid, "PRFNO": n, "PRFNAME": "CNC_FRESAR", "PRFID": perfil,
+            "PRFB": prfb, "PTYPE": ptype}
+
+
+def _peca_forma(arestas, com_cam=True):
+    return _dados(
+        pecas=[_peca(1, "Topo", ispec=2)],
+        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "RP_01"},
+                {"ID": 1, "TYP": 4, "ARTID": 0, "ASSID": 100, "NAME": "x"}],
+        orlas=arestas,
+        programas=[{"PARTID": 1, "PROGRAMID": "p", "SEQUENCENUM": 1,
+                    "ATTRIBUTE": "ncnum", "ATTRVALUE": "10099"}] if com_cam else [],
+    )
+
+
+def test_forma_com_cam_e_perfil_de_recorte_em_todas_as_arestas_nao_avisa():
+    # Como o Topo da obra 1957_01_26: 5 arestas FRESAR_RECORTES_VARADO, PRFB 32.
+    dados = _peca_forma([_aresta(1, n) for n in range(1, 6)] + [_aresta(1, 9, "RASGO", "11", "I")])
+    assert svc.pecas_forma_sem_cam(svc.montar_lista(dados)) == []
+
+
+def test_forma_com_cam_so_de_furos_avisa_das_arestas_sem_perfil():
+    # Como o Teto do TRIANGULO: tem CAM (furos), mas as arestas ficaram com o PRF_00.
+    dados = _peca_forma([_aresta(1, n, "PRF_00", "12") for n in range(1, 5)])
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "sem programa CAM" not in aviso
+    assert "aresta(s) 1, 2, 3, 4 de 4 sem o perfil FRESAR_RECORTES_VARADO" in aviso
+
+
+def test_forma_com_perfil_mas_orla_antes_do_cnc_avisa():
+    arestas = [_aresta(1, 1), _aresta(1, 2, prfb="12"), _aresta(1, 3, prfb="11"),
+               _aresta(1, 4, "PRF_00", "12")]
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(_peca_forma(arestas)))
+    assert "aresta(s) 4 de 4 sem o perfil" in aviso
+    assert "aresta(s) 2, 3 sem «Orla depois de CNC»" in aviso
+
+
+def test_forma_sem_cam_e_sem_perfil_diz_as_duas_coisas():
+    dados = _peca_forma([_aresta(1, n, "PRF_00", "12") for n in range(1, 5)], com_cam=False)
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "sem programa CAM" in aviso and "sem o perfil" in aviso
+
+
+def test_peca_retangular_nao_e_vista():
+    dados = _peca_forma([_aresta(1, n, "PRF_00", "12") for n in range(1, 5)], com_cam=False)
+    dados.pecas[0]["ISPEC"] = 0
+    assert svc.pecas_forma_sem_cam(svc.montar_lista(dados)) == []
 
 
 def test_programas_cnc_sem_dummy_nem_espelhados():
@@ -250,7 +306,7 @@ def test_o_que_conta_como_piso(name, esperado):
         {"ID": 100, "GROUPNAME": "RP_01", "CPID": name, "BOMFACTOR": 1},
         {"ID": 200, "GROUPNAME": "BL_GVT", "CPID": "200", "BOMFACTOR": 1},
     ])
-    assert {l.valor("Piso") for l in svc.montar_lista(dados)} == {esperado}
+    assert {l.valor(svc.DESCRICAO_ARTIGO) for l in svc.montar_lista(dados)} == {esperado}
 
 
 def test_sem_piso_no_principal_vale_o_do_sub_artigo():
@@ -259,8 +315,8 @@ def test_sem_piso_no_principal_vale_o_do_sub_artigo():
         {"ID": 200, "GROUPNAME": "BL_GVT", "CPID": "Cave", "BOMFACTOR": 1},
     ])
     linhas = _por_descricao(svc.montar_lista(dados))
-    assert linhas["Frente de gaveta"].valor("Piso") == "Cave"
-    assert linhas["Lateral"].valor("Piso") == ""
+    assert linhas["Frente de gaveta"].valor(svc.DESCRICAO_ARTIGO) == "Cave"
+    assert linhas["Lateral"].valor(svc.DESCRICAO_ARTIGO) == ""
 
 
 def test_csv_como_o_do_imos(tmp_path):
@@ -270,15 +326,18 @@ def test_csv_como_o_do_imos(tmp_path):
     linhas = texto.split("\r\n")
     assert linhas[-1] == ""  # termina com CRLF
     assert "\n" not in texto.replace("\r\n", "")
-    assert linhas[0] == ";".join(svc.COLUNAS_CSV) + ";"
+    assert linhas[0] == ";".join(svc.CABECALHO_CSV.get(c, c) for c in svc.COLUNAS_CSV) + ";"
     assert linhas[0].startswith("Descricao;Material;Comp.;Larg.;Esp;Qt.;Veio;")
     assert all(ln.count(";") == len(svc.COLUNAS_CSV) for ln in linhas[:-1])
     # As 17 primeiras colunas são as do CSV do .cfg, pela mesma ordem; depois as novas.
     cab = linhas[0].split(";")
     assert cab[15] == "RP" and cab[16] == "Notas" and cab[17] == "Artigo"
     assert "BHT" not in cab and "Notas_1" not in cab
+    # A 3.ª coluna nova chamava-se «Piso»: passa a «Descricao» (pedido do Paulo, 19-11-2026).
+    assert cab[17:23] == ["Artigo", "Artigo/SubArtigo", "Descricao", "ArtigoNome", "ISPEC", "Posicao"]
+    assert "Piso" not in cab
     lidas = svc.ler_csv(destino)
-    assert {r["Piso"] for r in lidas} == {"R/C"}
+    assert {r[svc.DESCRICAO_ARTIGO] for r in lidas} == {"R/C"}
 
 
 def test_ponto_e_virgula_no_texto_nao_parte_a_coluna(tmp_path):

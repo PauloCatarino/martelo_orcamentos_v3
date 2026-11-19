@@ -3338,6 +3338,65 @@ Por decidir (Paulo):
   `criar_modelo_lista_material_colar.py` + o novo `modImportCSVImos_1`) e ver o Enviar CUT-RITE
   com a linha sem material.
 
+### Lista única, ronda 2: Artigo com a Descricao do artigo, Posicao, aviso das arestas (2026-11-19, ENSAIO)
+
+Teste do Paulo na obra `1957_01_26_ILIDIO_RIBEIRO` da `imos_LE_TESTE02` (obra de cliente usada
+só de passagem; os artigos de teste vão ser apagados por ele). Decisões dele:
+- **Peça-mãe**: só a da frente de gaveta em U, como na ronda 1. As outras multipeças ficam de
+  fora; no futuro pode haver outro tipo que também tenha de sair.
+- **Coluna Artigo** = `ArtigoNome[_Artigo/SubArtigo]_Descricao`, com a **Descricao do artigo**
+  (o campo «Descricao» do artigo principal no iMos, `IDBINFO.CPID`), e o Artigo/SubArtigo só
+  quando é diferente do ArtigoNome. Ex.: `RP_A_01_MENINA`, `RP_A_01_GV1_MENINA`,
+  `TRIANGULO_PECA_3LADOS`, `Peça de contorno_HEXAGUNO`. Conferido com o Excel que ele editou
+  à mão: as 42 linhas iguais.
+- A coluna **`Piso` passa a `Descricao`** (no separador da importação fica uma 2.ª «Descricao»;
+  a macro procura da esquerda para a direita e apanha sempre a 1.ª, a da peça).
+- Coluna nova **`Posicao`** no fim do separador da importação (a posição do artigo no iMos,
+  hoje igual ao RP); ainda não se usa.
+- **Aviso das peças não retangulares** (`ISPEC <> 0`): além de «sem programa CAM», avisa
+  quando alguma aresta do contorno (`IDBPRF`, sem as interiores `PTYPE='I'`) não tem o perfil
+  **`FRESAR_RECORTES_VARADO`** (`PRFID`, o «Nome de perfil») ou não está com
+  **«Orla depois de CNC»**. A sequência lê-se no 1.º algarismo do `PRFB`: 3 = «Orla depois de
+  CNC» (o Topo, com tudo certo, tem 32; as arestas normais `PRF_00` têm 12). Esta leitura do
+  `PRFB` foi deduzida dos dados (o iMos não a documenta): **confirmar no teste**.
+  Na 1957: o **Teto** (TRIANGULO) já tem CAM (furos, 10012) mas as 4 arestas estão com `PRF_00`
+  → aviso; o **Topo** (HEXAGUNO, CAM 10099, 5 arestas com o perfil e 32) → sem aviso.
+
+Confirmado antes de entregar (Excel feito numa cópia local do modelo COLAR, importação e
+AUTOMATION por COM): separador da importação termina em `Artigo`, `Artigo/SubArtigo`,
+`Descricao`, `ArtigoNome`, `ISPEC`, `Posicao`; LISTAGEM_CUT_RITE com o Artigo novo; a linha
+`Frente Gaveta |U|` 193 × 796.5 com o CNC 10003 e sem material.
+
+Guião de teste:
+
+1. Fechar o Martelo e voltar a abri-lo (a partir da pasta principal).
+2. **Configurações** → **Ligação iMos** → **Base de dados** = `imos_LE_TESTE02` → **Guardar
+   configuração** (no fim, repor `imos_le`).
+3. **Produção** → a obra 1957_01_26 → **Funções** → **«Lista Material da base iMos (ensaio)…»**.
+   Esperado na 1.ª caixa: «ATENÇÃO: 1 peça(s) não retangular(es) que a CNC não vai recortar»
+   com o **Teto (600.0 x 500.0, TRIANGULO_PECA_3LADOS; 4 lados, não retangular): aresta(s)
+   1, 2, 3, 4 de 4 sem o perfil FRESAR_RECORTES_VARADO**. O Topo já não aparece.
+4. **Sim** → importar → antes do AUTOMATION, a mesma peça na caixa «Atenção». **OK** → **Sim**.
+5. No Excel `Ensaio_Lista_Base_iMos\Lista_Material_1957_01_26_ILIDIO_RIBEIRO_BASE.xlsm`
+   (se ainda o tiver aberto, fechá-lo antes do passo 3), esperado:
+   - separador `1957_01_26_ILIDIO_RIBEIRO`, colunas R a W: `Artigo`, `Artigo/SubArtigo`,
+     `Descricao`, `ArtigoNome`, `ISPEC`, `Posicao`;
+   - coluna Artigo igual à que o Paulo escreveu à mão (ex.: `RP_A_01_GV1_MENINA`);
+   - LISTAGEM_CUT_RITE: coluna Artigo com os mesmos valores.
+6. No iMos, no TRIANGULO: pôr o perfil `FRESAR_RECORTES_VARADO` em todas as arestas com
+   «Orla depois de CNC», gravar e gerar o CAM. Repetir o passo 3: o Teto deixa de aparecer.
+7. Para confirmar a leitura da sequência: deixar UMA aresta com o perfil mas com outra
+   sequência (ex.: «Orla antes de CNC»), gravar, repetir o passo 3. Esperado: «aresta(s) N sem
+   «Orla depois de CNC»».
+8. Repor a base do iMos (`imos_le`).
+
+Por decidir (Paulo):
+- os perfis parecidos que já existem na base (`FRESAR_REC_VARADO_com_Orla_1mm`,
+  `FRESA_REC_VARADO_com_Orla_05mm`, `SERRA_RECORTES_VARADO`) também contam como recorte, ou só o
+  `FRESAR_RECORTES_VARADO`?
+- todas as arestas têm de ter o perfil, ou chegam as que não são a direito (num trapézio, a
+  serra corta os lados retos)? Por agora, exige todas.
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em

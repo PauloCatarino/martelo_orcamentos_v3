@@ -7,13 +7,16 @@ Martelo: lê a obra na base do iMos (só SELECT) e escreve um CSV com as 17 prim
 do CSV do ``.cfg`` (Descricao a Notas), pela mesma ordem, e mais cinco que o ``.cfg`` não
 consegue dar:
 
-- ``Artigo``: o que vai para a coluna Artigo da LISTAGEM_CUT_RITE (19-11-2026): o
-  ``ArtigoNome`` quando a peça está diretamente no artigo principal, senão
-  ``ArtigoNome_Artigo/SubArtigo_Descricao`` (ver :func:`artigo_composto`);
+- ``Artigo``: o que vai para a coluna Artigo da LISTAGEM_CUT_RITE (19-11-2026):
+  ``ArtigoNome[_Artigo/SubArtigo]_Descricao``, com o sub-artigo só quando é diferente
+  do ArtigoNome (ver :func:`artigo_composto`);
 - ``Artigo/SubArtigo``: o artigo mais próximo da peça (num gaveteiro, o sub-artigo);
-- ``Piso``: o campo «Name» do artigo PRINCIPAL (ex.: R/C), vazio quando não é um piso;
+- ``Descricao`` (2.ª coluna com este nome; até 19-11-2026 chamava-se ``Piso``): o campo
+  «Descricao» do artigo PRINCIPAL no iMos (``IDBINFO.CPID``; ex.: MENINA), vazio quando
+  não foi preenchido;
 - ``ArtigoNome``: o nome do artigo principal;
-- ``ISPEC``: a forma da peça (0 = retangular de 4 lados).
+- ``ISPEC``: a forma da peça (0 = retangular de 4 lados);
+- ``Posicao``: a posição do artigo no iMos (por agora igual ao RP; ainda não se usa).
 
 Desde 19-11-2026 (pedido do Paulo) saem as colunas Notas_1, Cliente_Final, CNC, ABD e
 BHT: nenhuma fórmula, macro ou função do Martelo as usava. A macro do ensaio
@@ -71,8 +74,23 @@ COLUNAS_IMOS: tuple[str, ...] = (
 # Colunas do CSV do .cfg que a lista da base deixou de escrever (19-11-2026).
 COLUNAS_TIRADAS: tuple[str, ...] = ("Notas_1", "Cliente_Final", "CNC", "ABD", "BHT")
 # Colunas que só a leitura da base consegue dar; ficam depois das do .cfg.
-COLUNAS_NOVAS: tuple[str, ...] = ("Artigo", "Artigo/SubArtigo", "Piso", "ArtigoNome", "ISPEC")
+# A 2.ª «Descricao» (a do artigo) chamava-se «Piso» até 19-11-2026; dentro do Martelo
+# é a chave DESCRICAO_ARTIGO, no CSV e no Excel sai com o nome «Descricao».
+DESCRICAO_ARTIGO = "Descricao do artigo"
+COLUNAS_NOVAS: tuple[str, ...] = (
+    "Artigo", "Artigo/SubArtigo", DESCRICAO_ARTIGO, "ArtigoNome", "ISPEC", "Posicao",
+)
 COLUNAS_CSV: tuple[str, ...] = COLUNAS_IMOS + COLUNAS_NOVAS
+# Nome de cada coluna no cabeçalho do CSV (a macro procura pelo nome; a 1.ª
+# «Descricao», a da peça, é a que ela encontra primeiro).
+CABECALHO_CSV: dict[str, str] = {DESCRICAO_ARTIGO: "Descricao"}
+
+# Peças não retangulares (ISPEC <> 0): a forma faz-se na CNC. Cada aresta do contorno
+# tem de levar o perfil de recorte (o perfil tem o CAM da fresa) e a orla vem depois
+# da CNC. Na IDBPRF: PRFID = «Nome de perfil»; o 1.º algarismo do PRFB = «Sequência
+# de processamento» (3 = «Orla depois de CNC»; 1 = o normal, orla antes).
+PERFIS_RECORTE: tuple[str, ...] = ("FRESAR_RECORTES_VARADO",)
+SEQUENCIA_ORLA_DEPOIS_CNC = "3"
 
 # A frente de gaveta em U (multipeça): descrição da linha da mãe na lista.
 DESCRICAO_FRENTE_U = "Frente Gaveta |U|"
@@ -123,6 +141,8 @@ class LinhaCorte:
     qt: float = 0.0
     # Linha da peça-mãe de uma multipeça (a frente em U): não se compara com o .cfg.
     mae: bool = False
+    # Peça não retangular: o que falta para a CNC lhe dar a forma (ver pecas_forma_sem_cam).
+    falhas_forma: list[str] = field(default_factory=list)
 
     def valor(self, coluna: str) -> str:
         if coluna == "Qt.":
@@ -204,7 +224,8 @@ def ler_obra(
         f"SELECT ID, GROUPNAME, CPID, BOMFACTOR FROM IDBINFO WHERE ORDERID = {obra}",
     )
     orlas = executar(
-        cfg, f"SELECT ID, PRFNO, PRFNAME, PTYPE FROM IDBPRF WHERE ORDERID = {obra}"
+        cfg,
+        f"SELECT ID, PRFNO, PRFNAME, PRFID, PRFB, PTYPE FROM IDBPRF WHERE ORDERID = {obra}",
     )
     programas = executar(
         cfg,
@@ -310,15 +331,49 @@ def _programas_por_peca(dados: DadosObraImos) -> dict[int, list[str]]:
 
 
 def artigo_composto(artigo_nome: str, sub_artigo: str, descricao: str) -> str:
-    """A coluna Artigo da lista: o artigo principal, ou principal_subartigo_descrição.
+    """A coluna Artigo da lista: ``ArtigoNome[_Artigo/SubArtigo]_Descricao``.
 
-    Regra do Paulo (19-11-2026): se o Artigo/SubArtigo for igual ao ArtigoNome (a peça
-    está diretamente no artigo principal), fica só o ArtigoNome; se for diferente, fica
-    ``ArtigoNome_Artigo/SubArtigo_Descricao``. A Posicao (RP) não entra, por agora.
+    Regra do Paulo (19-11-2026, Excel da obra 1957_01_26): a ``Descricao`` é a do artigo
+    (ex.: RP_A_01_MENINA); o Artigo/SubArtigo só entra quando é diferente do ArtigoNome
+    (ex.: RP_A_01_GV1_MENINA). As partes vazias não entram. A Posicao não entra.
     """
-    if not sub_artigo or sub_artigo == artigo_nome:
-        return artigo_nome
-    return "_".join(p for p in (artigo_nome, sub_artigo, descricao) if p)
+    partes = [artigo_nome]
+    if sub_artigo and sub_artigo != artigo_nome:
+        partes.append(sub_artigo)
+    partes.append(descricao)
+    return "_".join(p for p in partes if p)
+
+
+def _falhas_forma(arestas: list[dict]) -> list[str]:
+    """O que falta às arestas de uma peça não retangular para a CNC lhe dar a forma.
+
+    Todas as arestas do contorno (``PTYPE`` diferente de «I») têm de ter o perfil de
+    recorte (``PERFIS_RECORTE``) com a «Sequência de processamento» «Orla depois de CNC».
+    """
+    if not arestas:
+        return ["sem arestas na base"]
+    sem_perfil = [a for a in arestas if _texto(a.get("PRFID")) not in PERFIS_RECORTE]
+    com_perfil = [a for a in arestas if a not in sem_perfil]
+    sequencia_errada = [
+        a for a in com_perfil
+        if not _texto(a.get("PRFB")).startswith(SEQUENCIA_ORLA_DEPOIS_CNC)
+    ]
+    falhas = []
+
+    def lados(lista: list[dict]) -> str:
+        numeros = sorted(_inteiro(a.get("PRFNO")) for a in lista)
+        return ", ".join(str(n) for n in numeros)
+
+    if sem_perfil:
+        falhas.append(
+            f"aresta(s) {lados(sem_perfil)} de {len(arestas)} sem o perfil "
+            f"{' / '.join(PERFIS_RECORTE)}"
+        )
+    if sequencia_errada:
+        falhas.append(
+            f"aresta(s) {lados(sequencia_errada)} sem «Orla depois de CNC»"
+        )
+    return falhas
 
 
 def _e_frente_u(peca: dict, maes_com_filhas: set[int]) -> bool:
@@ -339,9 +394,13 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
     }
     programas = _programas_por_peca(dados)
     orlas: dict[int, dict[str, str]] = defaultdict(dict)
+    arestas: dict[int, list[dict]] = defaultdict(list)
     for linha in dados.orlas:
+        if _texto(linha.get("PTYPE")).upper() == "I":
+            continue  # perfis interiores (rasgos, cavidades)
+        arestas[_inteiro(linha.get("ID"))].append(linha)
         coluna = ORLAS.get(_inteiro(linha.get("PRFNO")))
-        if coluna and _texto(linha.get("PTYPE")).upper() != "I":
+        if coluna:
             orlas[_inteiro(linha.get("ID"))][coluna] = _texto(linha.get("PRFNAME"))
     cab = dados.cabecalho
 
@@ -361,6 +420,7 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
         sub_artigo = artigos[0]["nome"] if artigos else ""
         artigo_nome = artigos[-1]["nome"] if artigos else ""
         rp = _texto(peca.get("PARTPOSSTR")).split(".")[0]
+        descricao_artigo = _piso(artigos)
         colunas = {
             "Descricao": descricao,
             "Material": material,
@@ -374,11 +434,12 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
             "Cliente": _texto(cab.get("CLIENT")),
             "RP": rp,
             "Notas": _texto(peca.get("INFO1")),
-            "Artigo": artigo_composto(artigo_nome, sub_artigo, descricao) or rp,
+            "Artigo": artigo_composto(artigo_nome, sub_artigo, descricao_artigo) or rp,
             "Artigo/SubArtigo": sub_artigo,
-            "Piso": _piso(artigos),
+            DESCRICAO_ARTIGO: descricao_artigo,
             "ArtigoNome": artigo_nome,
             "ISPEC": str(_inteiro(peca.get("ISPEC"))),
+            "Posicao": rp,
         }
         for coluna in ORLAS.values():
             # A mãe da frente em U não leva orlas: as filhas já as têm (senão o
@@ -388,27 +449,37 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
         if chave not in linhas:
             linhas[chave] = LinhaCorte(colunas=colunas, mae=mae)
         linhas[chave].qt += quantidade
+        if not mae and _inteiro(peca.get("ISPEC")) != 0:
+            for falha in _falhas_forma(arestas.get(id_peca, [])):
+                if falha not in linhas[chave].falhas_forma:
+                    linhas[chave].falhas_forma.append(falha)
     # Como o .cfg (POSITION_SORT): por posição; dentro dela, pela ordem das peças.
     return sorted(linhas.values(), key=lambda l: l.colunas["RP"])
 
 
 def pecas_forma_sem_cam(linhas: list[LinhaCorte]) -> list[str]:
-    """As peças não retangulares (ISPEC <> 0) sem programa CAM, para avisar.
+    """As peças não retangulares (ISPEC <> 0) que a CNC não vai recortar, para avisar.
 
-    Uma peça com contorno especial tem de ser feita na CNC; sem programa (CNC_1 vazio)
-    a fábrica cortava-a retangular. O ``NCNO`` da peça não serve para isto: o iMos
-    preenche-o sempre (é o número reservado). Vale o programa que está na base
-    (``IDBCAMPROGRAM``): enquanto o CAM não for gerado, nenhuma peça o tem.
+    Uma peça com contorno especial tem de ser feita na CNC. Avisa quando:
+
+    - não tem programa CAM (CNC_1 vazio). O ``NCNO`` não serve: o iMos preenche-o
+      sempre (é o número reservado); vale o programa na base (``IDBCAMPROGRAM``);
+    - tem programa (ex.: só furos), mas alguma aresta do contorno não tem o perfil de
+      recorte ou não está com «Orla depois de CNC» (ideia do Paulo, 19-11-2026): sem
+      isso a fresa não dá a forma à peça.
     """
     avisos = []
     for linha in linhas:
         ispec = _inteiro(linha.valor("ISPEC"))
-        if linha.mae or ispec == 0 or linha.valor("CNC_1"):
+        if linha.mae or ispec == 0:
+            continue
+        falhas = ([] if linha.valor("CNC_1") else ["sem programa CAM"]) + linha.falhas_forma
+        if not falhas:
             continue
         forma = FORMAS_ISPEC.get(ispec, f"forma especial, ISPEC {ispec}")
         avisos.append(
             f"{linha.valor('Descricao')} ({linha.valor('Comp.')} x {linha.valor('Larg.')}, "
-            f"{linha.valor('Artigo')}): {forma}"
+            f"{linha.valor('Artigo')}; {forma}): " + "; ".join(falhas)
         )
     return avisos
 
@@ -421,7 +492,7 @@ def escrever_csv(linhas: list[LinhaCorte], destino: Path) -> Path:
     """Escreve o CSV como o do iMos: «;», CRLF, ANSI e uma «;» no fim de cada linha."""
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
-    texto = ["".join(f"{c};" for c in COLUNAS_CSV)]
+    texto = ["".join(f"{CABECALHO_CSV.get(c, c)};" for c in COLUNAS_CSV)]
     for linha in linhas:
         texto.append("".join(f"{linha.valor(c).replace(';', ',')};" for c in COLUNAS_CSV))
     destino.write_bytes(("\r\n".join(texto) + "\r\n").encode("cp1252", errors="replace"))
@@ -429,11 +500,23 @@ def escrever_csv(linhas: list[LinhaCorte], destino: Path) -> Path:
 
 
 def ler_csv(caminho: Path) -> list[dict[str, str]]:
-    """Lê um CSV da lista de corte (do .cfg ou deste módulo)."""
+    """Lê um CSV da lista de corte (do .cfg ou deste módulo).
+
+    A 2.ª coluna «Descricao» (a do artigo, neste módulo) fica com a chave
+    ``DESCRICAO_ARTIGO``, para não tapar a da peça.
+    """
     with Path(caminho).open(encoding="cp1252", errors="replace", newline="") as f:
+        leitor = csv.reader(f, delimiter=";")
+        cabecalho = next(leitor, [])
+        nomes: list[str] = []
+        for nome in (c.strip() for c in cabecalho):
+            if nome == "Descricao" and nome in nomes:
+                nome = DESCRICAO_ARTIGO
+            nomes.append(nome)
         return [
-            {(k or "").strip(): (v or "").strip() for k, v in linha.items() if k}
-            for linha in csv.DictReader(f, delimiter=";")
+            {k: (v or "").strip() for k, v in zip(nomes, valores) if k}
+            for valores in leitor
+            if any(v.strip() for v in valores)
         ]
 
 
@@ -618,13 +701,16 @@ def gravar_ensaio(
     sem_cam = pecas_forma_sem_cam(linhas)
     if sem_cam:
         texto.append(
-            f"ATENÇÃO: {len(sem_cam)} peça(s) não retangular(es) SEM programa CAM:"
+            f"ATENÇÃO: {len(sem_cam)} peça(s) não retangular(es) que a CNC não vai "
+            "recortar (falta o CAM, ou o perfil de recorte / «Orla depois de CNC» "
+            "nas arestas):"
         )
         texto.extend(f"  - {p}" for p in sem_cam)
     texto.append(
-        "Coluna Artigo = ArtigoNome, ou ArtigoNome_SubArtigo_Descricao quando a peça "
-        "está num sub-artigo. Colunas só no separador da importação: Artigo/SubArtigo, "
-        "Piso, ArtigoNome, ISPEC. Saíram: " + ", ".join(COLUNAS_TIRADAS) + "."
+        "Coluna Artigo = ArtigoNome_Descricao do artigo, com o Artigo/SubArtigo no meio "
+        "quando é diferente do ArtigoNome. Colunas só no separador da importação: "
+        "Artigo/SubArtigo, Descricao (do artigo), ArtigoNome, ISPEC, Posicao. Saíram: "
+        + ", ".join(COLUNAS_TIRADAS) + "."
     )
     resumo = "\r\n".join(texto)
     relatorio = pasta / f"{nome}_Comparacao_com_CSV_iMos.txt"

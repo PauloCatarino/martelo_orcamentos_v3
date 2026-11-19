@@ -781,7 +781,9 @@ End Function
 '  Em paralelo com a Import_CSV_Imos_1, que fica exatamente como estava.
 '  O Martelo lê a obra na base do iMos e escreve um CSV com as colunas
 '  Descricao a Notas do CSV do iMos e, no fim, Artigo, Artigo/SubArtigo,
-'  Piso, ArtigoNome e ISPEC (estas 4 ficam só no separador da importação).
+'  Descricao (a do artigo; era Piso), ArtigoNome, ISPEC e Posicao (estas 5
+'  ficam só no separador da importação; a 1.ª Descricao, a da peça,
+'  é a que o FindColByHeader encontra primeiro).
 '  Esta macro faz os mesmos passos 1) a 8) da Import_CSV_Imos_1, mas
 '  importa ESSE ficheiro em vez de o procurar na pasta PASTA_CSV.
 '  19-11-2026: copia para a LISTA_ORDENADA pelo NOME das colunas

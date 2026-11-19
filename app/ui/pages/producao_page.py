@@ -2905,26 +2905,29 @@ class ProducaoPage(QWidget):
             )
 
     def _avisar_pecas_forma_sem_cam(self, titulo: str, linhas) -> None:
-        """Peças não retangulares (ISPEC <> 0) sem programa CAM: avisar antes do AUTOMATION."""
+        """Peças não retangulares (ISPEC <> 0) que a CNC não vai recortar: avisar antes do AUTOMATION."""
         avisos = lista_base_imos.pecas_forma_sem_cam(linhas)
         if not avisos:
             return
         mostrar = avisos[:25]
         if len(avisos) > len(mostrar):
             mostrar.append(f"... e mais {len(avisos) - len(mostrar)} peça(s).")
+        perfis = " / ".join(lista_base_imos.PERFIS_RECORTE)
         QMessageBox.warning(
             self,
             titulo,
-            f"Atenção: {len(avisos)} peça(s) NÃO retangular(es) sem programa CAM.\n\n"
-            "Estas peças têm uma forma especial e têm de ser feitas na CNC, mas "
-            "ainda não têm programa na base do iMos. Sem programa, eram cortadas "
+            f"Atenção: {len(avisos)} peça(s) NÃO retangular(es) que a CNC não vai "
+            "recortar.\n\n"
+            "Estas peças têm uma forma especial: a fresa da CNC é que lhes dá a forma. "
+            f"Para isso precisam de programa CAM e de ter, em todas as arestas, o perfil "
+            f"{perfis} com a sequência «Orla depois de CNC». Sem isso eram cortadas "
             "retangulares:\n\n"
             + "\n".join(f"- {a}" for a in mostrar)
-            + "\n\nGere o CAM no iMos e volte a fazer a lista, ou confirme estas "
-            "peças antes de enviar para o Cut-Rite.",
+            + "\n\nCorrija no iMos, gere o CAM e volte a fazer a lista, ou confirme "
+            "estas peças antes de enviar para o Cut-Rite.",
         )
         self.status_label.setText(
-            f"Aviso: {len(avisos)} peça(s) não retangular(es) sem programa CAM."
+            f"Aviso: {len(avisos)} peça(s) não retangular(es) que a CNC não vai recortar."
         )
 
     # ---- Lista Material: já existe, o que fazer? ---------------------------
