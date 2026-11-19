@@ -110,7 +110,7 @@ def test_colunas_do_iMos():
     assert [linha.valor(c) for c in svc.COLUNAS_IMOS] == [
         "Lateral", "AGL_19MM", "2225.8", "530.0", "19.2", "1", "1",
         "PVC_1.0", "PVC_0.4_D", "PVC_0.4_C", "PVC_0.4_B", "", "",
-        "1608", "CLIENTE_X", "RP_01", "Rasgo",
+        "1608", "CLIENTE_X", "RP_01", "Rasgo + CAM NAO ATRIBUIDO OU NAO CORRETO",
     ]
     assert linha.valor("ISPEC") == "2"
     assert linha.valor("Artigo") == "RP_01_R/C"
@@ -627,3 +627,43 @@ def test_artigo_sem_nome_no_imos_fica_a_posicao():
     )
     (linha,) = svc.montar_lista(dados)
     assert linha.valor("Artigo") == "7"
+
+
+def test_nota_de_alerta_do_cam_junta_se_a_nota_do_imos(tmp_path):
+    # Pedido do Paulo (19-11-2026): a peça com forma que a CNC não vai recortar leva
+    # o alerta nas Notas; a nota que vem do iMos fica.
+    imorder = _xml(tmp_path, _parte_xml(
+        1, [(600, 0), (600, 500), (0, 253.886), (0, 0)], [("PRF_00", ANTES)] * 4,
+    ))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    dados.pecas[0]["INFO1"] = "Recorte a 45"
+    (linha,) = svc.montar_lista(dados)
+    assert linha.valor("Notas") == "Recorte a 45 + CAM NAO ATRIBUIDO OU NAO CORRETO"
+    assert svc.tirar_nota_cam(linha.valor("Notas")) == "Recorte a 45"
+    # Sem nota do iMos fica só o alerta.
+    dados.pecas[0]["INFO1"] = ""
+    (linha,) = svc.montar_lista(dados)
+    assert linha.valor("Notas") == "CAM NAO ATRIBUIDO OU NAO CORRETO"
+
+
+def test_peca_com_forma_certa_nao_leva_o_alerta(tmp_path):
+    imorder = _xml(tmp_path, _parte_xml(
+        1, [(600, 0), (600, 500), (0, 253.886), (0, 0)],
+        [("PRF_00", ANTES), ("PRF_00", ANTES), (RECORTE, DEPOIS), ("PRF_00", ANTES)],
+    ))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    dados.pecas[0]["INFO1"] = "Recorte a 45"
+    (linha,) = svc.montar_lista(dados)
+    assert linha.valor("Notas") == "Recorte a 45"
+
+
+def test_peca_com_forma_sem_cam_leva_o_alerta_e_a_comparacao_ignora_o(tmp_path):
+    dados = _dados(pecas=[_peca(1, "Topo", ispec=2, info1="Nota iMos")])
+    linhas = svc.montar_lista(dados)
+    (linha,) = [l for l in linhas if l.valor("Descricao") == "Topo"]
+    assert linha.valor("Notas").endswith("CAM NAO ATRIBUIDO OU NAO CORRETO")
+    # O .cfg exporta a nota sem o alerta: a comparação continua igual.
+    lidas = svc.ler_csv(svc.escrever_csv(linhas, tmp_path / "l.csv"))
+    for r in lidas:
+        r["Notas"] = svc.tirar_nota_cam(r["Notas"])
+    assert svc.comparar_com_csv_imos(linhas, lidas).iguais

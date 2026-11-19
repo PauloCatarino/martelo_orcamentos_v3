@@ -100,6 +100,9 @@ PERFIS_RECORTE: tuple[str, ...] = (
     "SERRA_RECORTES_VARADO",
 )
 SEQUENCIA_ORLA_DEPOIS_CNC = "3"
+# Alerta que vai para as Notas de uma peça com forma que a CNC não vai recortar
+# (o texto é do Paulo, 19-11-2026; sem acentos, como as notas do Cut-Rite).
+NOTA_CAM_EM_FALTA = "CAM NAO ATRIBUIDO OU NAO CORRETO"
 # A base não guarda os pontos do contorno. Vêm do XML que o iMos escreve ao gravar
 # (``<Imorder>\<obra>\PXM\PXM_<obra>_*CADOUTPUT.xml``): lado reto que a serra corta =
 # segmento a direito, na horizontal ou na vertical, em cima do retângulo da peça.
@@ -640,6 +643,23 @@ def _e_frente_u(peca: dict, maes_com_filhas: set[int]) -> bool:
     )
 
 
+def juntar_nota(nota: str, extra: str) -> str:
+    """Junta ``extra`` à nota da peça sem a perder (``"nota + extra"``)."""
+    if not nota:
+        return extra
+    if extra in nota:
+        return nota
+    return f"{nota} + {extra}"
+
+
+def tirar_nota_cam(nota: str) -> str:
+    """A nota como veio do iMos, sem o alerta do CAM (para comparar com o .cfg)."""
+    for forma in (f" + {NOTA_CAM_EM_FALTA}", NOTA_CAM_EM_FALTA):
+        if nota.endswith(forma):
+            return nota[: -len(forma)]
+    return nota
+
+
 def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
     """Monta as linhas da lista de corte, juntando as peças com as colunas todas iguais."""
     acima = _cadeia_artigos(dados)
@@ -682,6 +702,24 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
         artigo_nome = artigos[-1]["nome"] if artigos else ""
         rp = _texto(peca.get("PARTPOSSTR")).split(".")[0]
         descricao_artigo = _piso(artigos)
+        falhas: list[str] = []
+        if not mae and _inteiro(peca.get("ISPEC")) != 0:
+            forma = dados.formas.get(id_peca)
+            falhas = (
+                _falhas_forma_xml(forma) if forma is not None
+                else [
+                    f + " [lados retos estimados pelas medidas]"
+                    for f in _falhas_forma(
+                        arestas.get(id_peca, []),
+                        _numero(peca.get("CLENG")), _numero(peca.get("CWIDTH")),
+                    )
+                ]
+            )
+        notas = _texto(peca.get("INFO1"))
+        if not mae and _inteiro(peca.get("ISPEC")) != 0 and (falhas or not ncs):
+            # Pedido do Paulo (19-11-2026): mais um aviso, na própria lista. A nota
+            # que vem do iMos fica; o alerta junta-se a ela.
+            notas = juntar_nota(notas, NOTA_CAM_EM_FALTA)
         colunas = {
             "Descricao": descricao,
             "Material": material,
@@ -694,7 +732,7 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
             "Enc.": _texto(cab.get("ARTICLENO")),
             "Cliente": _texto(cab.get("CLIENT")),
             "RP": rp,
-            "Notas": _texto(peca.get("INFO1")),
+            "Notas": notas,
             "Artigo": artigo_composto(artigo_nome, sub_artigo, descricao_artigo) or rp,
             "Artigo/SubArtigo": sub_artigo,
             DESCRICAO_ARTIGO: descricao_artigo,
@@ -712,21 +750,9 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
                 colunas=colunas, mae=mae, so_dummy=id_peca in so_dummy and not ncs
             )
         linhas[chave].qt += quantidade
-        if not mae and _inteiro(peca.get("ISPEC")) != 0:
-            forma = dados.formas.get(id_peca)
-            falhas = (
-                _falhas_forma_xml(forma) if forma is not None
-                else [
-                    f + " [lados retos estimados pelas medidas]"
-                    for f in _falhas_forma(
-                        arestas.get(id_peca, []),
-                        _numero(peca.get("CLENG")), _numero(peca.get("CWIDTH")),
-                    )
-                ]
-            )
-            for falha in falhas:
-                if falha not in linhas[chave].falhas_forma:
-                    linhas[chave].falhas_forma.append(falha)
+        for falha in falhas:
+            if falha not in linhas[chave].falhas_forma:
+                linhas[chave].falhas_forma.append(falha)
     # Como o .cfg (POSITION_SORT): por posição; dentro dela, pela ordem das peças.
     return sorted(linhas.values(), key=lambda l: l.colunas["RP"])
 
@@ -825,8 +851,9 @@ def comparar_com_csv_imos(
     )
 
     def chave(get, pos) -> tuple:
+        # O alerta do CAM é do Martelo: o .cfg não o tem.
         return (get("Descricao"), get("Material"), get("Comp."), get("Larg."), get("Esp"),
-                pos, get("Notas"))
+                pos, tirar_nota_cam(get("Notas")))
 
     qt_base: dict[tuple, float] = defaultdict(float)
     qt_csv: dict[tuple, float] = defaultdict(float)

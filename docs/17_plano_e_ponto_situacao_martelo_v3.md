@@ -3499,6 +3499,35 @@ Depois de desenhar: gravar, gerar o CAM e repetir o guião da ronda 3 (passo 3 e
 - Ensaio completo no Excel (pasta de obra falsa no scratchpad): importação, AUTOMATION, listas de
   ferragens (1_FERRAGENS, 2_PURCH, 5_ETIQUETA_PALETE, 5_Custo_Obra_Ferragens): OK.
 
+### Lista única, ronda 5: alerta nas Notas e simulação do fluxo do Martelo (2026-11-19, ENSAIO)
+
+- O Excel que o Paulo gerou às 11:59 saiu com o código da **ronda 2** (relatório «aresta(s)
+  1, 3, 4 de 4 sem o perfil…», sem passos 3 e 4): o Martelo dele estava aberto desde antes das
+  rondas 3 e 4. **Fechar e voltar a abrir o Martelo** depois de cada ronda.
+- **Alerta nas Notas** (pedido do Paulo): a peça com forma (`ISPEC <> 0`) que a CNC não vai
+  recortar (sem CAM numa CNC, ou alguma aresta sem perfil de recorte / sem «Orla depois de CNC»)
+  leva nas Notas `CAM NAO ATRIBUIDO OU NAO CORRETO`. A nota que vem do iMos fica: «nota do iMos +
+  CAM NAO ATRIBUIDO OU NAO CORRETO» (`juntar_nota`). A comparação com o CSV do `.cfg` tira o
+  alerta (`tirar_nota_cam`). Chega à LISTA_ORDENADA e à LISTAGEM_CUT_RITE (coluna Notas).
+- **Simulação do botão do Martelo** (`scratchpad\simular_fluxo_1957.py`): corre os mesmos métodos
+  da página (`_lista_material_base_imos` → `_passos_3_e_4_lista_material`), com «Sim» automático
+  no Martelo e nas caixas da macro, base TESTE02 e uma pasta de obra falsa. Resultado na 1957
+  (12:11): passo 1 (Excel do modelo COLAR com as DEFENICOES do assistente, macro de ensaio,
+  importação) → aviso das 5 peças → passo 2 (AUTOMATION) → passo 3 (listas geradas, copiadas para
+  a subpasta, importadas: 1_FERRAGENS, 2_PURCH, 5_ETIQUETA_PALETE, 5_Custo_Obra_Ferragens) →
+  passo 4 (aviso e abre o Excel). Notas: Topo e Teto 8 só «Peça com CAM sutados»; Teto 2, Fundo 6,
+  Teto 6, 7 e 9 com «Peça com CAM sutados + CAM NAO ATRIBUIDO OU NAO CORRETO».
+
+Guião de teste:
+1. **Fechar o Martelo** e voltar a abri-lo (pasta principal).
+2. Ligação iMos = `imos_LE_TESTE02`; fechar o Excel de ensaio da 1957, se estiver aberto.
+3. Produção → 1957_01_26 → Funções → «Lista Material da base iMos (ensaio)…» → responder **Yes**
+   a tudo (passo 1, OK no aviso, passo 2, passo 3 → gerar as listas na janela → fechar → **Sim**
+   na macro → passo 4 → OK).
+4. Esperado no Excel: separadores 1_FERRAGENS, 2_PURCH, 5_ETIQUETA_PALETE e
+   5_Custo_Obra_Ferragens; na LISTAGEM_CUT_RITE, coluna Notas como acima.
+5. Repor a Ligação iMos (`imos_le`).
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em
