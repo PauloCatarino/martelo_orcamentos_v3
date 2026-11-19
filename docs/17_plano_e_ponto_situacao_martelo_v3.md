@@ -3584,6 +3584,50 @@ Guião de teste (depois de instalar a 1.0.34 num PC com a 1.0.33):
 4. Ajuda → «Novidades das versões»: o caminho da pasta, a lista 1.0.34 / 1.0.33 / 1.0.32 com PDF, «Novidades desta
    versão (1.0.34)» e «Abrir a pasta das atualizações» funcionam.
 
+### Ensaio da lista: «[WinError 5] Acesso negado» e a macro que o Excel do Pedro não deixava escrever (2026-11-19)
+
+Dois erros no ensaio («Lista Material da base iMos (ensaio)»), com a obra **1912_01_26_LINHAS_DIREITAS** na `imos_le`:
+
+**1. PC do Paulo (1.0.34 instalada): «Não foi possível ler a encomenda no iMos: [WinError 5] Acesso negado»** na janela
+«Gerar listas iMOS» do passo 3; às 16:12 e 16:14 (obra `_330`) o mesmo erro a criar o Excel de ensaio.
+- **Não é da `imos_le` nem do SQL.** A obra foi lida na `imos_le` no passo 1 (50 linhas, 61 peças). O erro é do Windows
+  a recusar ARRANCAR o PowerShell que o Martelo usa para ler o iMos/PHC e para o Excel (o diário mostra o rasto:
+  `subprocess` → `CreateProcess` → `PermissionError: [WinError 5]`).
+- Umas vezes sim, outras não, a segundos de distância; só no Martelo instalado (nunca a partir da pasta principal); nada
+  nos registos do Windows Defender, da integridade do código nem do AppLocker; do `python.exe`, 20 arranques iguais
+  passaram todos. É o padrão do **antivírus (Kaspersky, neste PC)** a travar o `Martelo_Orcamentos_V3.exe` (a 1.0.34 foi
+  instalada às 15:27, executável novo para o antivírus). Por confirmar nos Relatórios do Kaspersky.
+- Correção (`app/services/arranque_powershell.py`): os 4 sítios que arrancam o PowerShell (SELECT do iMos/PHC, escrita
+  no iMos, Escritório do Streamlit, criação do Excel da Lista Material) passam por um só ponto: o `powershell.exe` vai
+  pelo caminho completo da pasta do Windows; se o Windows recusar o arranque, tenta mais 2 vezes (1 s e 2 s depois — o
+  processo não chegou a nascer, repetir não faz nada duas vezes); se continuar a recusar, a mensagem diz o que fazer
+  (Kaspersky › Relatórios; pôr o Martelo como aplicação fidedigna). A janela «Gerar listas iMOS» passou a gravar o erro
+  no diário (antes só aparecia na linha de estado) e diz para carregar em «Atualizar».
+- Chega aos colegas só com uma **versão nova**.
+
+**2. PC do Pedro: «O Excel não deixou escrever a macro no livro de ensaio … não é fidedigno».**
+- As macros estavam ativas, mas isso só deixa CORRER macros (é o que a Lista Material_IMOS faz: corre as do modelo).
+  Desde a ronda 1 de hoje, o ensaio ESCREVE o `modImportCSVImos_1` novo no livro de ensaio, porque ainda não está no
+  modelo COLAR do servidor — e escrever código precisa de outra opção do Excel, na mesma página:
+  **Ficheiro › Opções › Centro de Fidedignidade › «Definições do Centro de Fidedignidade…» › Definições de Macros ›
+  Definições de macros do programador › «Confiar no acesso ao modelo de objeto do projeto VBA»**. No PC do Paulo está
+  ligada; no do Pedro não.
+- A mensagem passou a dar o caminho completo e a explicar a diferença. Deixa de ser preciso quando o módulo novo
+  entrar no modelo COLAR (só com o sim do Paulo, quando aprovar a lista única).
+
+Guião de teste:
+1. Fechar e voltar a abrir o Martelo **da pasta principal**; Ligação iMos = `imos_le`.
+2. Produção → obra **26.1912_01_01_LINHAS_DIREITAS** → Funções → «Lista Material da base iMos (ensaio)…» → «Yes» nos
+   passos 1 e 2 → no passo 3 «Yes». Esperado: a janela «Gerar listas iMOS» mostra a «Última gravação do desenho» com
+   data e hora (não «—») e «Gerar listas marcadas» fica ativo. Gerar → fechar → as ferragens entram no Excel de ensaio
+   (1_FERRAGENS, 2_PURCH, 3_SPP, 5_ETIQUETA_PALETE, 5_Custo_Obra_Ferragens).
+3. Com a 1.0.34 instalada (sem a correção): se voltar o «[WinError 5] Acesso negado», abrir o Kaspersky › Relatórios e
+   ver se aparece o `Martelo_Orcamentos_V3.exe` bloqueado à mesma hora. Esperado: a entrada do Kaspersky confirma a causa.
+4. PC do Pedro, com o Excel fechado: ligar «Confiar no acesso ao modelo de objeto do projeto VBA» (caminho acima) → OK, OK
+   → repetir o ensaio da 1912. Esperado: o Excel de ensaio é criado e importa a lista (passo 2).
+5. Depois da versão nova instalada: num PC onde o antivírus trave o Martelo, a caixa diz «O Windows não deixou o Martelo
+   arrancar o PowerShell (Acesso negado), nem à 3.ª tentativa…» com o que fazer, em vez de só «Acesso negado».
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em

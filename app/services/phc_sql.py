@@ -16,6 +16,7 @@ from typing import Any, TypedDict
 
 from sqlalchemy.orm import Session
 
+from app.services.arranque_powershell import arrancar_powershell
 from app.services.system_setting_service import SystemSettingService
 
 KEY_PHC_SERVER = "phc_sql_server"
@@ -234,8 +235,7 @@ try {
             tf.write(ps_script)
             temp_path = tf.name
 
-        cmd = [
-            "powershell",
+        argumentos = [
             "-NoProfile",
             "-NonInteractive",
             "-ExecutionPolicy",
@@ -247,8 +247,8 @@ try {
         creationflags = (
             getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         )
-        result = subprocess.run(
-            cmd,
+        result = arrancar_powershell(
+            argumentos,
             capture_output=True,
             text=True,
             check=False,

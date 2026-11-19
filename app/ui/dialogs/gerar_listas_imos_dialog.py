@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.core import diario_bordo
 from app.db.session import SessionLocal
 from app.services.imos_listas_service import (
     LISTAS_IMOS,
@@ -338,7 +339,18 @@ class GerarListasImosDialog(QDialog):
                 self.gravacao_label.setText("—")
                 self._preencher_estados()
                 self.gerar_button.setEnabled(False)
-                self._supervisor(f"Não foi possível ler a encomenda no iMos: {erro}", tema.TEXTO_ERRO)
+                # Só a linha de estado mostrava o erro, e perdia-se (obra 1912,
+                # 19-11-2026): fica também no diário, com o rasto.
+                diario_bordo.registar_erro(
+                    "Gerar listas iMOS",
+                    f"{self._nome_enc}: não foi possível ler a encomenda no iMos — {erro}",
+                    erro=erro,
+                )
+                self._supervisor(
+                    f"Não foi possível ler a encomenda no iMos: {erro} "
+                    "Carregue em «Atualizar» para tentar outra vez.",
+                    tema.TEXTO_ERRO,
+                )
                 return
         finally:
             QApplication.restoreOverrideCursor()

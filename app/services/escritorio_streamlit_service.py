@@ -33,6 +33,7 @@ from app.domain import escritorio_streamlit as regras
 from app.domain.escritorio_streamlit import Avaliacao, ChaveVersao, DadosEscritorio
 from app.models.producao import Producao
 from app.services import streamlit_sql_service as st
+from app.services.arranque_powershell import arrancar_powershell
 from app.services.phc_sql import assert_select_only
 from app.services.system_setting_service import SystemSettingService
 
@@ -132,9 +133,8 @@ def correr_powershell(script: str, payload: Mapping[str, Any], *, timeout: int) 
             temp_path = ficheiro.name
 
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-        resultado = subprocess.run(
+        resultado = arrancar_powershell(
             [
-                "powershell",
                 "-NoProfile",
                 "-NonInteractive",
                 "-ExecutionPolicy",

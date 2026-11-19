@@ -13,6 +13,7 @@ from app.db.base import Base
 import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.models.producao import Producao
 from app.repositories.system_setting_repository import SystemSettingRepository
+from app.services.arranque_powershell import caminho_powershell
 from app.services.lista_material_imos_service import (
     MACRO_IMPORT_LISTAS_FERRAGENS,
     TEMPLATE_FILENAME,
@@ -233,8 +234,10 @@ def test_execute_lista_material_imos_invoca_powershell(monkeypatch, tmp_path) ->
 
     cmd = capturado["cmd"]
     assert output == context.output_path
+    # O powershell.exe vai pelo caminho completo (arranque_powershell).
+    assert cmd[0] == caminho_powershell()
     assert cmd[:6] == [
-        "powershell",
+        caminho_powershell(),
         "-NoProfile",
         "-NonInteractive",
         "-ExecutionPolicy",

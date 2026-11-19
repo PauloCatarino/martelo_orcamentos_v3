@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.producao import Producao
 from app.services import lista_material_excel_com as excel_com
+from app.services.arranque_powershell import arrancar_powershell
 from app.services.producao_pastas_service import (
     AVISO_PASTA_OBRA_EM_FALTA,
     garantir_pasta_servidor,
@@ -39,6 +40,21 @@ MACRO_IMPORT_BASE_IMOS = "Import_Base_Imos_1"
 # está nos modelos do servidor. O Martelo escreve o módulo no Excel de ENSAIO,
 # depois de o criar; os modelos e a Lista Material_IMOS não mudam.
 MODULO_IMPORT_CSV_IMOS = "modImportCSVImos_1"
+# 19-11-2026 (PC do Pedro): «as macros estão ativas» e mesmo assim falhava.
+# Ativar macros deixa CORRER as do modelo (é o que a Lista Material_IMOS faz);
+# ESCREVER código num livro é outra opção do Excel, na mesma página.
+MENSAGEM_SEM_ACESSO_VBA = (
+    "O Excel deste PC não deixa o Martelo escrever a macro nova no livro de "
+    "ensaio.\n\n"
+    "Ter as macros ativas não chega: é outra opção, na mesma página. No Excel: "
+    "Ficheiro › Opções › Centro de Fidedignidade › botão «Definições do Centro "
+    "de Fidedignidade...» › Definições de Macros › em «Definições de macros do "
+    "programador», marque «Confiar no acesso ao modelo de objeto do projeto "
+    "VBA». Carregue em OK duas vezes, feche o Excel e repita o ensaio.\n\n"
+    "Só o ensaio precisa disto: a Lista Material_IMOS corre as macros que já "
+    "estão no modelo, não escreve nenhuma.\n\n"
+    "Detalhe: {detalhe}"
+)
 
 
 def _fonte_modulo_vba(nome: str) -> Path:
@@ -89,12 +105,9 @@ def escrever_modulo_vba_no_livro(
             projeto = workbook.VBProject
             componentes = list(projeto.VBComponents)
         except Exception as error:
-            raise RuntimeError(
-                "O Excel não deixou escrever a macro no livro de ensaio.\n"
-                "Ligue «Confiar no acesso ao modelo de objeto do projeto VBA» em "
-                "Ficheiro › Opções › Centro de Fidedignidade › Definições de Macros.\n\n"
-                f"Detalhe: {excel_com.descrever_erro(error)}"
-            ) from error
+            raise RuntimeError(MENSAGEM_SEM_ACESSO_VBA.format(
+                detalhe=excel_com.descrever_erro(error)
+            )) from error
         componente = next((c for c in componentes if c.Name == nome), None)
         if componente is None:
             raise RuntimeError(f"O livro não tem o módulo VBA «{nome}».")
@@ -184,8 +197,7 @@ def execute_lista_material_imos(
             tf.write(_lista_material_imos_ps_script())
             temp_path = tf.name
 
-        cmd = [
-            "powershell",
+        argumentos = [
             "-NoProfile",
             "-NonInteractive",
             "-ExecutionPolicy",
@@ -200,8 +212,8 @@ def execute_lista_material_imos(
         creationflags = (
             getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         )
-        result = subprocess.run(
-            cmd,
+        result = arrancar_powershell(
+            argumentos,
             capture_output=True,
             text=True,
             check=False,

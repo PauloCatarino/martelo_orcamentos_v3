@@ -34,6 +34,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.domain.imos_texto import limpar_texto_imos
+from app.services.arranque_powershell import arrancar_powershell
 from app.services.imos_sql import (
     IMOS_TIPO_ENCOMENDA,
     IMOS_TIPO_PASTA,
@@ -588,9 +589,8 @@ def executar_payload(payload: dict[str, Any]) -> list[NoCriado]:
         creationflags = (
             getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         )
-        result = subprocess.run(
+        result = arrancar_powershell(
             [
-                "powershell",
                 "-NoProfile",
                 "-NonInteractive",
                 "-ExecutionPolicy",
