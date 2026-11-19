@@ -55,6 +55,7 @@ colunas (sem as Notas) e chega a pôr a nota de uma peça noutra (obra 1608_03, 
 from __future__ import annotations
 
 import csv
+import math
 import shutil
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -120,6 +121,7 @@ DESCRICAO_FRENTE_U = "Frente Gaveta |U|"
 FORMAS_ISPEC = {
     1: "4 lados, não retangular",
     2: "mais de 4 lados",
+    3: "com arcos",
 }
 
 # Onde ficam os ficheiros do ensaio: numa subpasta da obra, para nenhuma função
@@ -187,6 +189,8 @@ class LinhaCorte:
     mae: bool = False
     # Peça não retangular: o que falta para a CNC lhe dar a forma (ver pecas_forma_sem_cam).
     falhas_forma: list[str] = field(default_factory=list)
+    # Tem programa CAM, mas só nas máquinas Dummy* (não vai a nenhuma CNC).
+    so_dummy: bool = False
 
     def valor(self, coluna: str) -> str:
         if coluna == "Qt.":
@@ -311,6 +315,19 @@ def procurar_xml_pxm(pasta_imorder: Path, nome_obra: str) -> Path | None:
     return max(candidatos, key=lambda p: p.stat().st_mtime) if candidatos else None
 
 
+def _comprimento_segmento(x0: float, y0: float, x1: float, y1: float, bulge: float) -> float:
+    """Comprimento de um segmento; com ``bulge`` (arco, como no DXF), o do arco.
+
+    No XML do iMos um arco é um ``<segment>`` com ``bulge`` = tan(ângulo/4): um quarto
+    de círculo tem 0.414 (obra 1957_01_26, canto de raio 250).
+    """
+    corda = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+    if not bulge:
+        return corda
+    angulo = 4 * math.atan(abs(bulge))
+    return corda * angulo / (2 * math.sin(angulo / 2))
+
+
 def _segmento_a_direito(segmento: ET.Element) -> bool:
     """Um segmento simples (só ponto final): reta. Arcos e o resto não."""
     if segmento.tag != "segment":
@@ -334,14 +351,16 @@ def forma_do_xml(parte: ET.Element) -> FormaPeca | None:
     }
     ponto = (_numero(contorno.get("x")), _numero(contorno.get("y")))
     pontos = [ponto]
-    troços: list[tuple[int, tuple[float, float], tuple[float, float], bool]] = []
+    troços: list[tuple[int, tuple[float, float], tuple[float, float], bool, float]] = []
     for segmento in contorno:
         if segmento.tag == "attributes":
             continue
         fim = (_numero(segmento.get("x")), _numero(segmento.get("y")))
         cid = _inteiro(segmento.get("cid"))
         if cid:
-            troços.append((cid, ponto, fim, _segmento_a_direito(segmento)))
+            troços.append(
+                (cid, ponto, fim, _segmento_a_direito(segmento), _numero(segmento.get("bulge")))
+            )
         pontos.append(fim)
         ponto = fim
     if not troços:
@@ -349,7 +368,7 @@ def forma_do_xml(parte: ET.Element) -> FormaPeca | None:
     xs, ys = [p[0] for p in pontos], [p[1] for p in pontos]
     folga = FOLGA_LADO_RETO_MM
     arestas = []
-    for cid, (x0, y0), (x1, y1), direito in troços:
+    for cid, (x0, y0), (x1, y1), direito, bulge in troços:
         horizontal = abs(y1 - y0) <= folga
         vertical = abs(x1 - x0) <= folga
         no_retangulo = (
@@ -359,7 +378,7 @@ def forma_do_xml(parte: ET.Element) -> FormaPeca | None:
         aresta = arestas_xml.get(cid)
         arestas.append(ArestaContorno(
             numero=cid,
-            comprimento=((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5,
+            comprimento=_comprimento_segmento(x0, y0, x1, y1, bulge),
             reta_na_serra=direito and no_retangulo,
             perfil=_texto(aresta.get("name")) if aresta is not None else "",
             sequencia=_texto(aresta.get("do")).lower() if aresta is not None else "",
@@ -506,7 +525,8 @@ def artigo_composto(artigo_nome: str, sub_artigo: str, descricao: str) -> str:
     if sub_artigo and sub_artigo != artigo_nome:
         partes.append(sub_artigo)
     partes.append(descricao)
-    return "_".join(p for p in partes if p)
+    # O iMos põe "." num artigo a que ninguém deu nome: não entra.
+    return "_".join(p for p in partes if p and p not in PISO_VAZIO)
 
 
 def _e_lado_reto(aresta: dict, comp: float, larg: float) -> bool:
@@ -628,6 +648,12 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
         _inteiro(p.get("PARENT_ID")) for p in dados.pecas if _inteiro(p.get("PARENT_ID"))
     }
     programas = _programas_por_peca(dados)
+    # Peças com programa só nas máquinas Dummy* (sem CNC a sério): o aviso diz isso.
+    so_dummy = {
+        _inteiro(l.get("PARTID")) for l in dados.programas
+        if _texto(l.get("ATTRIBUTE")).lower() == "machine"
+        and _texto(l.get("ATTRVALUE")).startswith("Dummy")
+    }
     orlas: dict[int, dict[str, str]] = defaultdict(dict)
     arestas: dict[int, list[dict]] = defaultdict(list)
     for linha in dados.orlas:
@@ -682,7 +708,9 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
             colunas[coluna] = "" if mae else orlas.get(id_peca, {}).get(coluna, "")
         chave = tuple(colunas[c] for c in COLUNAS_CSV if c != "Qt.")
         if chave not in linhas:
-            linhas[chave] = LinhaCorte(colunas=colunas, mae=mae)
+            linhas[chave] = LinhaCorte(
+                colunas=colunas, mae=mae, so_dummy=id_peca in so_dummy and not ncs
+            )
         linhas[chave].qt += quantidade
         if not mae and _inteiro(peca.get("ISPEC")) != 0:
             forma = dados.formas.get(id_peca)
@@ -719,7 +747,13 @@ def pecas_forma_sem_cam(linhas: list[LinhaCorte]) -> list[str]:
         ispec = _inteiro(linha.valor("ISPEC"))
         if linha.mae or ispec == 0:
             continue
-        falhas = ([] if linha.valor("CNC_1") else ["sem programa CAM"]) + linha.falhas_forma
+        if linha.valor("CNC_1"):
+            sem_cam = []
+        elif linha.so_dummy:
+            sem_cam = ["sem programa CAM numa CNC (só na máquina Dummy)"]
+        else:
+            sem_cam = ["sem programa CAM"]
+        falhas = sem_cam + linha.falhas_forma
         if not falhas:
             continue
         forma = FORMAS_ISPEC.get(ispec, f"forma especial, ISPEC {ispec}")

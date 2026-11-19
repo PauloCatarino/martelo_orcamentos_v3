@@ -586,3 +586,44 @@ def test_xml_mais_antigo_do_que_a_gravacao_nao_se_usa(tmp_path):
                                  "ultima_gravacao": datetime(2026, 11, 19, 11, 0)})
     dados = svc.juntar_formas_pxm(dados, imorder)
     assert dados.formas == {} and "mais antigo" in dados.aviso_formas
+
+
+def test_xml_arco_com_bulge_da_1957(tmp_path):
+    # Como o Teto 7 da 1957: canto de raio 250, o arco vem com bulge 0.414 (1/4 de volta).
+    pontos = [(800, 0), (800, 250), (550, 500), (0, 500), (0, 0)]
+    imorder = _xml(tmp_path, _parte_xml(1, pontos, [("PRF_00", ANTES)] * 5,
+                                        extra_seg={3: 'bulge="0.414213562373"'}))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    arco = dados.formas[1].arestas[2]
+    assert not arco.reta_na_serra
+    assert round(arco.comprimento, 1) == 392.7  # pi x 250 / 2, não a corda (353.6)
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "aresta(s) 3 (392.7 mm)" in aviso
+
+
+def test_programa_so_na_maquina_dummy_avisa_assim():
+    dados = _dados(
+        pecas=[_peca(1, "Teto", ispec=3)],
+        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "RP_01"},
+                {"ID": 1, "TYP": 4, "ARTID": 0, "ASSID": 100, "NAME": "x"}],
+        programas=[
+            {"PARTID": 1, "PROGRAMID": "p", "SEQUENCENUM": 1, "ATTRIBUTE": "ncnum", "ATTRVALUE": "10102_01"},
+            {"PARTID": 1, "PROGRAMID": "p", "SEQUENCENUM": 1, "ATTRIBUTE": "machine", "ATTRVALUE": "Dummy_ABD"},
+        ],
+    )
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "com arcos" in aviso
+    assert "sem programa CAM numa CNC (só na máquina Dummy)" in aviso
+
+
+def test_artigo_sem_nome_no_imos_fica_a_posicao():
+    # O iMos põe "." no nome de um artigo novo: a coluna Artigo fica com a posição.
+    assert svc.artigo_composto(".", ".", "") == ""
+    dados = _dados(
+        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "."},
+                {"ID": 1, "TYP": 4, "ARTID": 0, "ASSID": 100, "NAME": "x"}],
+        artigos=[{"ID": 100, "GROUPNAME": ".", "CPID": "100", "BOMFACTOR": 1}],
+        pecas=[_peca(1, "Teto", pos="7.10102")],
+    )
+    (linha,) = svc.montar_lista(dados)
+    assert linha.valor("Artigo") == "7"

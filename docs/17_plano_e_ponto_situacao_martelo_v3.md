@@ -3476,6 +3476,29 @@ Peças de teste pedidas ao Paulo (na 1957, TESTE02), para confirmar com dados re
    (212.1 mm) com perfil de recorte mas sem «Orla depois de CNC»».
 Depois de desenhar: gravar, gerar o CAM e repetir o guião da ronda 3 (passo 3 em diante).
 
+**Resultado (19-11, 11:50, peças desenhadas pelo Paulo na 1957; testes internos meus):**
+
+| Peça (posição) | Forma | Perfis | Aviso do Martelo |
+|---|---|---|---|
+| Teto (2) | trapézio | perfil na aresta 2 (lado reto) | aresta 3 (648.5 mm, a inclinada) sem perfil |
+| Topo (5) | hexágono | todas com perfil, depois de CNC | nenhum |
+| Fundo (6) | L 975 × 655, recorte 475 × 225 | só na 6 (recorte), depois | aresta 5 (475.0 mm, a outra do recorte) |
+| Teto (6) | L igual | na 5 mas «Orla antes de CNC» | CAM só na Dummy; aresta 6 sem perfil; aresta 5 sem «Orla depois de CNC» |
+| Teto (7) | canto redondo R250 | nenhum | CAM só na Dummy; aresta 3 (392.7 mm, o arco) sem perfil |
+| Teto (8) | chanfro | na 3, depois de CNC | nenhum |
+| Teto (9) | canto redondo R250 | na 3 mas «antes de CNC» | CAM só na Dummy; aresta 3 sem «Orla depois de CNC» |
+
+- O **arco** vem no XML como `<segment … bulge="0.414…">` (o «bulge» do DXF = tan(ângulo/4)); o
+  Martelo dá o comprimento do arco (392.7), não a corda (353.6). ISPEC 3 = «com arcos».
+- Quando as arestas não pedem CNC, o iMos só gera programa na `Dummy_ABD`: o aviso diz «sem
+  programa CAM numa CNC (só na máquina Dummy)».
+- Artigo com o nome «.» (o iMos põe-no num artigo novo sem nome): a coluna Artigo fica com a
+  posição (ex.: `7`).
+- **Cuidado:** a lista lida enquanto o iMos está a gravar/gerar o CAM sai sem CNC (aconteceu-me
+  às 11:50). Fazer a lista só depois de o iMos acabar.
+- Ensaio completo no Excel (pasta de obra falsa no scratchpad): importação, AUTOMATION, listas de
+  ferragens (1_FERRAGENS, 2_PURCH, 5_ETIQUETA_PALETE, 5_Custo_Obra_Ferragens): OK.
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em
