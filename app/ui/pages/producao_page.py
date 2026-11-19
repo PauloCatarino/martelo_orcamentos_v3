@@ -2763,7 +2763,14 @@ class ProducaoPage(QWidget):
         try:
             with SessionLocal() as session:
                 cfg = load_imos_config(session)
+                pasta_imorder = SystemSettingService(session).obter_valor(
+                    KEY_PASTA_BASE_IMORDER, ""
+                )
             dados = lista_base_imos.ler_obra(cfg, nome_enc)
+            # O contorno das peças com forma vem do XML que o iMos grava na encomenda.
+            dados = lista_base_imos.juntar_formas_pxm(
+                dados, Path(pasta_imorder) if pasta_imorder else None
+            )
             linhas = lista_base_imos.montar_lista(dados)
             if linhas:
                 ensaio = lista_base_imos.gravar_ensaio(

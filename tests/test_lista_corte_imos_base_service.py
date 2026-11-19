@@ -476,3 +476,113 @@ def test_gravar_ensaio_sem_csv_do_imos(tmp_path):
     ensaio = svc.gravar_ensaio(tmp_path, dados, svc.montar_lista(dados))
     assert ensaio.comparacao is None
     assert "não houve comparação" in ensaio.resumo
+
+
+# --- Contorno das peças pelo XML do iMos (PXM_<obra>_*CADOUTPUT.xml) ---------------
+
+def _parte_xml(pid, pontos, arestas, inicio=(0, 0), extra_seg=None):
+    """Um <part> como o do iMos: o contorno (pontos finais com cid) e as arestas."""
+    segs = "".join(
+        f'<segment x="{x}" y="{y}" cid="{i}" sid="1" {extra_seg.get(i, "") if extra_seg else ""}/>'
+        for i, (x, y) in enumerate(pontos, 1)
+    )
+    eds = "".join(
+        f'<edge cid="{i}" name="{nome}" do="{seq}" />' for i, (nome, seq) in enumerate(arestas, 1)
+    )
+    return (f'<part id="{pid}" barcode="1"><description><contour x="{inicio[0]}" y="{inicio[1]}" z="0">'
+            f'{segs}</contour><edges>{eds}</edges></description></part>')
+
+
+def _xml(tmp_path, *partes, nome="OBRA"):
+    pasta = tmp_path / "Imorder" / nome / "PXM"
+    pasta.mkdir(parents=True)
+    xml = pasta / f"PXM_{nome}_01_CADOUTPUT.xml"
+    xml.write_text(f'<pxm><parts>{"".join(partes)}</parts></pxm>', encoding="utf-8")
+    return tmp_path / "Imorder"
+
+
+ANTES, DEPOIS, RECORTE = "before cnc", "after cnc", "FRESAR_RECORTES_VARADO"
+
+
+def _dados_forma(pid=1, nome="OBRA"):
+    return _dados(
+        nome=nome,
+        pecas=[_peca(pid, "Teto", ispec=1, comp=600, larg=500)],
+        grupos=[{"ID": 100, "TYP": 2, "ARTID": 0, "ASSID": 0, "NAME": "RP_01"},
+                {"ID": pid, "TYP": 4, "ARTID": 0, "ASSID": 100, "NAME": "x"}],
+        programas=[{"PARTID": pid, "PROGRAMID": "p", "SEQUENCENUM": 1,
+                    "ATTRIBUTE": "ncnum", "ATTRVALUE": "10012"}],
+    )
+
+
+def test_xml_teto_da_1957_so_a_aresta_inclinada_conta(tmp_path):
+    # O Teto da 1957: (0,0)->(600,0)->(600,500)->(0,253.886)->(0,0). A 4 é reta e
+    # está no retângulo (a serra corta-a); só a 3, inclinada, precisa do perfil.
+    imorder = _xml(tmp_path, _parte_xml(
+        1, [(600, 0), (600, 500), (0, 253.886), (0, 0)],
+        [("PRF_00", ANTES), (RECORTE, DEPOIS), ("PRF_00", ANTES), ("PRF_00", ANTES)],
+    ))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    assert dados.aviso_formas == ""
+    assert [a.reta_na_serra for a in dados.formas[1].arestas] == [True, True, False, True]
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "aresta(s) 3 (648.5 mm) não é(são) lado(s) reto(s) da serra" in aviso
+    assert "estimados" not in aviso
+
+
+def test_xml_teto_com_o_perfil_na_inclinada_nao_avisa(tmp_path):
+    imorder = _xml(tmp_path, _parte_xml(
+        1, [(600, 0), (600, 500), (0, 253.886), (0, 0)],
+        [("PRF_00", ANTES), ("PRF_00", ANTES), (RECORTE, DEPOIS), ("PRF_00", ANTES)],
+    ))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    assert svc.pecas_forma_sem_cam(svc.montar_lista(dados)) == []
+
+
+def test_xml_peca_em_l_o_recorte_interior_precisa_do_perfil(tmp_path):
+    # L de 800 x 600 com um recorte de 300 x 300: as arestas 3 e 4 são retas mas ficam
+    # por dentro do retângulo (a serra não as corta); a 2 e a 5 estão em cima dele.
+    pontos = [(800, 0), (800, 300), (500, 300), (500, 600), (0, 600), (0, 0)]
+    imorder = _xml(tmp_path, _parte_xml(1, pontos, [("PRF_00", ANTES)] * 6))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    assert [a.reta_na_serra for a in dados.formas[1].arestas] == [True, True, False, False, True, True]
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "aresta(s) 3 (300.0 mm), 4 (300.0 mm) não é(são)" in aviso
+
+
+def test_xml_arco_nunca_e_lado_reto(tmp_path):
+    # Um segmento com mais do que o ponto final (ex.: centro de um arco) não é reta,
+    # mesmo que os pontos fiquem em cima do retângulo.
+    pontos = [(600, 0), (600, 500), (0, 500), (0, 0)]
+    imorder = _xml(tmp_path, _parte_xml(1, pontos, [("PRF_00", ANTES)] * 4,
+                                        extra_seg={2: 'cx="500" cy="250"'}))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    assert [a.reta_na_serra for a in dados.formas[1].arestas] == [True, False, True, True]
+
+
+def test_xml_perfil_com_orla_antes_do_cnc_avisa(tmp_path):
+    imorder = _xml(tmp_path, _parte_xml(
+        1, [(600, 0), (600, 500), (0, 253.886), (0, 0)],
+        [("PRF_00", ANTES), ("PRF_00", ANTES), (RECORTE, "on cnc"), ("PRF_00", ANTES)],
+    ))
+    dados = svc.juntar_formas_pxm(_dados_forma(), imorder)
+    (aviso,) = svc.pecas_forma_sem_cam(svc.montar_lista(dados))
+    assert "aresta(s) 3 (648.5 mm) com perfil de recorte mas sem «Orla depois de CNC»" in aviso
+
+
+def test_sem_xml_estima_pelas_medidas_e_diz(tmp_path):
+    dados = svc.juntar_formas_pxm(_dados_forma(), tmp_path / "nada")
+    assert dados.formas == {} and "estimados pelas medidas" in dados.aviso_formas
+
+
+def test_xml_mais_antigo_do_que_a_gravacao_nao_se_usa(tmp_path):
+    import os
+    from datetime import datetime
+    imorder = _xml(tmp_path, _parte_xml(1, [(600, 0), (600, 500), (0, 500), (0, 0)],
+                                        [("PRF_00", ANTES)] * 4))
+    xml = next((imorder / "OBRA" / "PXM").glob("*.xml"))
+    os.utime(xml, (datetime(2026, 11, 19, 9, 0).timestamp(),) * 2)
+    dados = svc.DadosObraImos(**{**_dados_forma().__dict__,
+                                 "ultima_gravacao": datetime(2026, 11, 19, 11, 0)})
+    dados = svc.juntar_formas_pxm(dados, imorder)
+    assert dados.formas == {} and "mais antigo" in dados.aviso_formas

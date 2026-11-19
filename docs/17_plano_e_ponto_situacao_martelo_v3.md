@@ -3444,6 +3444,38 @@ Guião de teste:
    está errada: dizer-me o que aparece.
 8. Repor a base do iMos (`imos_le`).
 
+### Lista única, ronda 4: o contorno verdadeiro da peça (XML do iMos) (2026-11-19, ENSAIO)
+
+Achado: ao gravar, o iMos escreve `I:\Factory\Imorder\<obra>\PXM\PXM_<obra>_01_CADOUTPUT.xml`
+(1 544 das 1 965 encomendas da pasta têm a pasta PXM). Cada `<part id=…>` traz, em
+`<description>`, o `<contour>` com os pontos (cada `<segment>` é o ponto final; `cid` = nº da
+aresta) e as `<edges>` com o perfil (`name`) e a sequência em texto (`do="before cnc"`,
+`"on cnc"`, `"after cnc"`). O Martelo só lê este ficheiro.
+- **Lado reto da serra** = segmento a direito, na horizontal ou na vertical, em cima do retângulo
+  da peça. Fica resolvido o caso do lado reto mais curto (o 253.9 do Teto já não aparece) e o
+  de uma peça em L (as arestas do recorte interior são retas mas precisam de CNC).
+- Um segmento com mais do que o ponto final (arco, ou qualquer coisa que não se conheça) nunca
+  conta como lado reto. **Ainda não se viu como o iMos escreve um arco**: é a peça 3 do teste.
+- O XML só se usa se for da mesma gravação que a base (não mais de 2 min antes da gravação do
+  desenho). Sem XML, fica a regra das medidas da ronda 3 e o aviso diz «[lados retos estimados
+  pelas medidas]»; o relatório diz porquê.
+- A ajuda do iMos (página «Edges» do Element Manager) confirma as três sequências: Edge before
+  CNC / Edge on CNC / Edge after CNC. Na base: `kmsprof.WORKSEQU` 10/20/30, e o 1.º algarismo
+  do `IDBPRF.PRFB` = 1/2/3; o 2.º = «Surface» (`TRIMSURF` + 1); `PRFP` = «Trim» (`TRIMNEXT`).
+- Na 1957 como está: o Teto avisa só a aresta 3 (648.5 mm), a inclinada. O Paulo pôs o perfil na
+  aresta 2, que é um lado reto: tem de passar para a 3.
+
+Peças de teste pedidas ao Paulo (na 1957, TESTE02), para confirmar com dados reais:
+1. **Teto do TRIANGULO**: passar o perfil `FRESAR_RECORTES_VARADO` da aresta 2 para a 3 (a
+   inclinada), «Orla depois de CNC». Esperado: o Teto deixa de aparecer no aviso.
+2. **Peça em L** 800 × 600 com recorte 300 × 300 num canto: perfil só numa das duas arestas do
+   recorte. Esperado: aviso só da outra aresta do recorte.
+3. **Canto redondo** 800 × 500, raio 150: perfil só no arco, «Orla depois de CNC». Esperado: sem
+   aviso; e ver no XML como vem o arco.
+4. **Chanfro** 800 × 500, 150 × 150: perfil no chanfro com «Orla na CNC». Esperado: «aresta(s) N
+   (212.1 mm) com perfil de recorte mas sem «Orla depois de CNC»».
+Depois de desenhar: gravar, gerar o CAM e repetir o guião da ronda 3 (passo 3 em diante).
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em

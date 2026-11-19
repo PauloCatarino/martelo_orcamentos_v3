@@ -56,9 +56,10 @@ from __future__ import annotations
 
 import csv
 import shutil
+import xml.etree.ElementTree as ET
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -98,9 +99,14 @@ PERFIS_RECORTE: tuple[str, ...] = (
     "SERRA_RECORTES_VARADO",
 )
 SEQUENCIA_ORLA_DEPOIS_CNC = "3"
-# A base não guarda os pontos do contorno: um lado reto que a serra corta é uma aresta
-# com o comprimento ou a largura inteiros da peça (com esta folga, em mm).
+# A base não guarda os pontos do contorno. Vêm do XML que o iMos escreve ao gravar
+# (``<Imorder>\<obra>\PXM\PXM_<obra>_*CADOUTPUT.xml``): lado reto que a serra corta =
+# segmento a direito, na horizontal ou na vertical, em cima do retângulo da peça.
+# Sem o XML: aresta com o comprimento ou a largura inteiros da peça (com esta folga, mm).
 FOLGA_LADO_RETO_MM = 1.0
+# No XML a sequência vem em texto: «before cnc», «on cnc» ou «after cnc».
+SEQUENCIA_XML_DEPOIS_CNC = "after cnc"
+PASTA_IMORDER_DEFEITO = Path(r"I:\Factory\Imorder")
 # As listas de ferragens que a macro ImportarListasFerragensIMOS_14 procura na pasta
 # do Excel (e o custo, que o Martelo importa a seguir).
 LISTAS_FERRAGENS: tuple[str, ...] = (
@@ -147,6 +153,28 @@ class DadosObraImos:
     orlas: list[dict]
     programas: list[dict]
     ultima_gravacao: datetime | None = None
+    # Contorno das peças não retangulares, do XML do iMos (ID da peça -> forma).
+    formas: dict[int, "FormaPeca"] = field(default_factory=dict)
+    # O que se passou com o XML (para o relatório): vazio quando foi lido.
+    aviso_formas: str = ""
+
+
+@dataclass(frozen=True)
+class ArestaContorno:
+    """Uma aresta do contorno de uma peça, tal como vem no XML do iMos."""
+
+    numero: int
+    comprimento: float
+    reta_na_serra: bool  # a direito, em cima do retângulo da peça: corta-a a serra
+    perfil: str
+    sequencia: str  # «before cnc», «on cnc», «after cnc»
+
+
+@dataclass(frozen=True)
+class FormaPeca:
+    """O contorno de uma peça lido do XML do iMos."""
+
+    arestas: tuple[ArestaContorno, ...]
 
 
 @dataclass
@@ -267,6 +295,126 @@ def ler_obra(
         programas=programas,
         ultima_gravacao=gravada,
     )
+
+
+# ---------------------------------------------------------------------------
+# Contorno das peças: o XML que o iMos escreve ao gravar (só leitura)
+# ---------------------------------------------------------------------------
+
+def procurar_xml_pxm(pasta_imorder: Path, nome_obra: str) -> Path | None:
+    """O ``PXM_<obra>_*CADOUTPUT.xml`` mais recente da obra, ou None."""
+    pasta = Path(pasta_imorder) / nome_obra / "PXM"
+    try:
+        candidatos = [p for p in pasta.glob(f"PXM_{nome_obra}_*CADOUTPUT.xml") if p.is_file()]
+    except OSError:
+        return None
+    return max(candidatos, key=lambda p: p.stat().st_mtime) if candidatos else None
+
+
+def _segmento_a_direito(segmento: ET.Element) -> bool:
+    """Um segmento simples (só ponto final): reta. Arcos e o resto não."""
+    if segmento.tag != "segment":
+        return False
+    if set(segmento.attrib) - {"x", "y", "z", "cid", "sid"}:
+        return False
+    return all(filho.tag == "attributes" for filho in segmento)
+
+
+def forma_do_xml(parte: ET.Element) -> FormaPeca | None:
+    """Lê o contorno e as arestas de um ``<part>`` do XML do iMos."""
+    descricao = parte.find("description")
+    if descricao is None:
+        return None
+    contorno = descricao.find("contour")
+    if contorno is None:
+        return None
+    arestas_xml = {
+        _inteiro(e.get("cid")): e
+        for e in (descricao.find("edges") if descricao.find("edges") is not None else [])
+    }
+    ponto = (_numero(contorno.get("x")), _numero(contorno.get("y")))
+    pontos = [ponto]
+    troços: list[tuple[int, tuple[float, float], tuple[float, float], bool]] = []
+    for segmento in contorno:
+        if segmento.tag == "attributes":
+            continue
+        fim = (_numero(segmento.get("x")), _numero(segmento.get("y")))
+        cid = _inteiro(segmento.get("cid"))
+        if cid:
+            troços.append((cid, ponto, fim, _segmento_a_direito(segmento)))
+        pontos.append(fim)
+        ponto = fim
+    if not troços:
+        return None
+    xs, ys = [p[0] for p in pontos], [p[1] for p in pontos]
+    folga = FOLGA_LADO_RETO_MM
+    arestas = []
+    for cid, (x0, y0), (x1, y1), direito in troços:
+        horizontal = abs(y1 - y0) <= folga
+        vertical = abs(x1 - x0) <= folga
+        no_retangulo = (
+            (horizontal and min(abs(y0 - min(ys)), abs(y0 - max(ys))) <= folga)
+            or (vertical and min(abs(x0 - min(xs)), abs(x0 - max(xs))) <= folga)
+        )
+        aresta = arestas_xml.get(cid)
+        arestas.append(ArestaContorno(
+            numero=cid,
+            comprimento=((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5,
+            reta_na_serra=direito and no_retangulo,
+            perfil=_texto(aresta.get("name")) if aresta is not None else "",
+            sequencia=_texto(aresta.get("do")).lower() if aresta is not None else "",
+        ))
+    return FormaPeca(arestas=tuple(arestas))
+
+
+def ler_formas_pxm(xml: Path, ids: set[int]) -> dict[int, FormaPeca]:
+    """As formas das peças ``ids`` no XML do iMos (as que lá estiverem)."""
+    formas: dict[int, FormaPeca] = {}
+    for parte in ET.parse(xml).getroot().iter("part"):
+        pid = _inteiro(parte.get("id"))
+        if pid in ids:
+            forma = forma_do_xml(parte)
+            if forma is not None:
+                formas[pid] = forma
+    return formas
+
+
+def juntar_formas_pxm(dados: DadosObraImos, pasta_imorder: Path | None) -> DadosObraImos:
+    """Junta aos dados o contorno das peças não retangulares, lido do XML do iMos.
+
+    Só se usa o XML se for da mesma gravação que a base (os IDs das peças mudam a
+    cada gravação). Sem XML, o aviso estima os lados retos pelas medidas.
+    """
+    ids = {
+        _inteiro(p.get("ID")) for p in dados.pecas if _inteiro(p.get("ISPEC")) != 0
+    }
+    if not ids:
+        return dados
+    xml = procurar_xml_pxm(pasta_imorder or PASTA_IMORDER_DEFEITO, dados.nome)
+    if xml is None:
+        return replace(dados, aviso_formas=(
+            "XML do contorno do iMos não encontrado: os lados retos foram estimados "
+            "pelas medidas."
+        ))
+    try:
+        gravado = datetime.fromtimestamp(xml.stat().st_mtime)
+        if dados.ultima_gravacao and gravado < dados.ultima_gravacao - timedelta(minutes=2):
+            return replace(dados, aviso_formas=(
+                f"XML do contorno do iMos ({xml.name}, {_hora(gravado)}) é mais antigo do "
+                "que a gravação do desenho: os lados retos foram estimados pelas medidas."
+            ))
+        formas = ler_formas_pxm(xml, ids)
+    except (OSError, ET.ParseError) as erro:
+        return replace(dados, aviso_formas=(
+            f"Não foi possível ler o XML do contorno do iMos ({erro}): os lados retos "
+            "foram estimados pelas medidas."
+        ))
+    em_falta = len(ids - set(formas))
+    aviso = (
+        f"{em_falta} peça(s) não retangular(es) sem contorno no XML do iMos: estimadas "
+        "pelas medidas." if em_falta else ""
+    )
+    return replace(dados, formas=formas, aviso_formas=aviso)
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +558,36 @@ def _falhas_forma(arestas: list[dict], comp: float = 0.0, larg: float = 0.0) -> 
     return falhas
 
 
+def _falhas_forma_xml(forma: FormaPeca) -> list[str]:
+    """Como :func:`_falhas_forma`, mas com o contorno verdadeiro (XML do iMos)."""
+    precisam = [
+        a for a in forma.arestas
+        if not a.reta_na_serra and a.perfil not in PERFIS_RECORTE
+    ]
+    sequencia_errada = [
+        a for a in forma.arestas
+        if a.perfil in PERFIS_RECORTE and a.sequencia != SEQUENCIA_XML_DEPOIS_CNC
+    ]
+
+    def lados(lista: list[ArestaContorno]) -> str:
+        return ", ".join(
+            f"{a.numero} ({a.comprimento:.1f} mm)" for a in sorted(lista, key=lambda a: a.numero)
+        )
+
+    falhas = []
+    if precisam:
+        falhas.append(
+            f"aresta(s) {lados(precisam)} não é(são) lado(s) reto(s) da serra e não "
+            "tem(têm) perfil de recorte"
+        )
+    if sequencia_errada:
+        falhas.append(
+            f"aresta(s) {lados(sequencia_errada)} com perfil de recorte mas sem "
+            "«Orla depois de CNC»"
+        )
+    return falhas
+
+
 def copiar_listas_ferragens(pasta_obra: Path, pasta_ensaio: Path) -> list[Path]:
     """Copia as listas de ferragens da pasta da obra para a pasta do Excel de ensaio.
 
@@ -507,9 +685,18 @@ def montar_lista(dados: DadosObraImos) -> list[LinhaCorte]:
             linhas[chave] = LinhaCorte(colunas=colunas, mae=mae)
         linhas[chave].qt += quantidade
         if not mae and _inteiro(peca.get("ISPEC")) != 0:
-            for falha in _falhas_forma(
-                arestas.get(id_peca, []), _numero(peca.get("CLENG")), _numero(peca.get("CWIDTH"))
-            ):
+            forma = dados.formas.get(id_peca)
+            falhas = (
+                _falhas_forma_xml(forma) if forma is not None
+                else [
+                    f + " [lados retos estimados pelas medidas]"
+                    for f in _falhas_forma(
+                        arestas.get(id_peca, []),
+                        _numero(peca.get("CLENG")), _numero(peca.get("CWIDTH")),
+                    )
+                ]
+            )
+            for falha in falhas:
                 if falha not in linhas[chave].falhas_forma:
                     linhas[chave].falhas_forma.append(falha)
     # Como o .cfg (POSITION_SORT): por posição; dentro dela, pela ordem das peças.
@@ -765,6 +952,8 @@ def gravar_ensaio(
             "nas arestas que não são lados retos):"
         )
         texto.extend(f"  - {p}" for p in sem_cam)
+    if dados.aviso_formas:
+        texto.append(dados.aviso_formas)
     texto.append(
         "Coluna Artigo = ArtigoNome_Descricao do artigo, com o Artigo/SubArtigo no meio "
         "quando é diferente do ArtigoNome. Colunas só no separador da importação: "
