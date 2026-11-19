@@ -1043,19 +1043,30 @@ def import_hardware_cost(path, source, *, substituir=False):
         if replace or not existentes:
             src = excel.Workbooks.Open(str(source), UpdateLinks=0, ReadOnly=True)
             copia_de_seguranca(path, 'antes_ferragens')
+            # 19-11-2026: o Copy com Before=/After= por NOME não chega ao Excel (a
+            # ligação COM é tardia): o separador ia para um livro novo e o Martelo
+            # mudava o nome ao último separador do livro (o LOG) — ou, ao
+            # substituir, a outro qualquer. Os argumentos vão por POSIÇÃO
+            # (Copy(Before) / Copy(None, After)) e confirma-se que o separador entrou.
+            antes = book.Worksheets.Count
             if replace:
-                # Mesmo sítio no livro; a cópia de segurança acabou de ser gravada.
-                position = existentes[0].Index
-                existentes[0].Delete()
-                if position <= book.Worksheets.Count:
-                    src.Worksheets.Item(1).Copy(Before=book.Worksheets.Item(position))
-                else:
-                    src.Worksheets.Item(1).Copy(After=book.Worksheets.Item(book.Worksheets.Count))
-                    position = book.Worksheets.Count
-                book.Worksheets.Item(position).Name = '5_Custo_Obra_Ferragens'
+                # Mesmo sítio no livro: a cópia entra antes do antigo, e só depois
+                # de confirmada se apaga o antigo.
+                antigo = existentes[0]
+                position = antigo.Index
+                src.Worksheets.Item(1).Copy(book.Worksheets.Item(position))
             else:
-                src.Worksheets.Item(1).Copy(After=book.Worksheets.Item(book.Worksheets.Count))
-                book.Worksheets.Item(book.Worksheets.Count).Name = '5_Custo_Obra_Ferragens'
+                src.Worksheets.Item(1).Copy(None, book.Worksheets.Item(antes))
+                position = antes + 1
+            if book.Worksheets.Count != antes + 1:
+                raise ValueError(
+                    'O separador dos custos de ferragens não entrou no Excel. '
+                    'Nada foi gravado; a fonte foi preservada.'
+                )
+            if replace:
+                antigo.Name = '5_Custo_Obra_Ferragens_antigo'
+                antigo.Delete()
+            book.Worksheets.Item(position).Name = '5_Custo_Obra_Ferragens'
             excel_com.recalcular(excel)
         book.Save()
     finally:

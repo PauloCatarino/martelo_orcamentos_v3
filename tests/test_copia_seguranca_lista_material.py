@@ -8,6 +8,7 @@ importação do custo das ferragens como o relatório de custos falhavam com
 from __future__ import annotations
 
 import inspect
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -115,10 +116,22 @@ class _Folha:
     def Calculate(self):
         pass
 
-    def Copy(self, After=None, Before=None):
+    def Copy(self, *args, **kwargs):
+        # Como o Excel por COM tardio (19-11-2026): Before=/After= por nome não chegam,
+        # e a folha ia para um livro novo. Só os argumentos por posição contam.
+        if kwargs:
+            return
+        Before = args[0] if args else None
+        After = args[1] if len(args) > 1 else None
         destino = (After or Before).livro
         posicao = destino.folhas.index(After) + 1 if After else destino.folhas.index(Before)
-        destino.folhas.insert(posicao, _Folha(destino, self.Name))
+        nome = self.Name
+        while any(f.Name == nome for f in destino.folhas):
+            nome += ' (2)'
+        destino.folhas.insert(posicao, _Folha(destino, nome))
+
+    def Delete(self):
+        self.livro.folhas.remove(self)
 
 
 class _Folhas:
@@ -141,12 +154,16 @@ class _Folhas:
         return iter(list(self.livro.folhas))
 
 
+_FOLHAS_DO_LIVRO = ['LISTAGEM_CUT_RITE']
+_LIVROS: list = []
+
+
 class _Livro:
     ReadOnly = False
 
     def __init__(self, path, gravacoes):
         self.path, self.gravacoes = Path(path), gravacoes
-        self.folhas = [_Folha(self, 'LISTAGEM_CUT_RITE')]
+        self.folhas = [_Folha(self, n) for n in _FOLHAS_DO_LIVRO]
         self.Worksheets = _Folhas(self)
 
     def SaveCopyAs(self, *_):
@@ -163,7 +180,12 @@ class _Livro:
 def _excel_a_fingir(monkeypatch):
     gravacoes = []
     excel = SimpleNamespace(Quit=lambda: None, CalculateFull=lambda: None)
-    excel.Workbooks = SimpleNamespace(Open=lambda p, **_: _Livro(p, gravacoes))
+    def abrir(p, **_):
+        livro = _Livro(p, gravacoes)
+        _LIVROS.append(livro)
+        return livro
+    _LIVROS.clear()
+    excel.Workbooks = SimpleNamespace(Open=abrir)
     win32 = SimpleNamespace(DispatchEx=lambda _nome: excel)
     monkeypatch.setattr(svc, 'importlib', SimpleNamespace(import_module=lambda _nome: win32))
     return gravacoes
@@ -195,3 +217,52 @@ def test_custo_das_ferragens_numa_obra_como_a_1637(tmp_path, monkeypatch):
     assert svc.import_hardware_cost(path, fonte) == fonte.resolve()
     [copias] = gravacoes
     assert len(copias) == 1 and '_antes_ferragens_' in copias[0]
+
+
+def test_custo_das_ferragens_nao_estraga_o_log(tmp_path, monkeypatch):
+    # 19-11-2026 (obra 1957): o separador ia para um livro novo e o LOG, último do
+    # livro, passava a chamar-se 5_Custo_Obra_Ferragens.
+    monkeypatch.setattr(sys.modules[__name__], '_FOLHAS_DO_LIVRO', ['LISTAGEM_CUT_RITE', 'LOG'])
+    _excel_a_fingir(monkeypatch)
+    pasta = _obra(tmp_path, 180)
+    lista = Workbook()
+    lista.active.title = 'LISTAGEM_CUT_RITE'
+    path = pasta / 'Lista_Material_1637_01_26_LINHAS_DIREITAS.xlsx'
+    lista.save(path)
+    custo = Workbook()
+    custo.active.title = '5_Custo_Obra_Ferragens'
+    custo.active.append(('Nome iMos (Nome Uniao)', 'Ref PHC', 'Qt', 'Un'))
+    fonte = pasta / svc.HARDWARE_FILENAME
+    custo.save(fonte)
+    svc.import_hardware_cost(path, fonte)
+    livro = _LIVROS[0]
+    assert [f.Name for f in livro.folhas] == ['LISTAGEM_CUT_RITE', 'LOG', '5_Custo_Obra_Ferragens']
+
+
+def test_substituir_custo_fica_no_mesmo_sitio_e_o_resto_intacto(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], '_FOLHAS_DO_LIVRO',
+                        ['LISTAGEM_CUT_RITE', '5_Custo_Obra_Ferragens', 'LOG'])
+    _excel_a_fingir(monkeypatch)
+    pasta = _obra(tmp_path, 180)
+    lista = Workbook()
+    lista.active.title = 'LISTAGEM_CUT_RITE'
+    velho = lista.create_sheet('5_Custo_Obra_Ferragens')
+    velho.append(('Nome iMos (Nome Uniao)', 'Ref PHC', 'Qt', 'Un'))
+    velho.append(('CAVILHA', 'FF00001', 10, 'un'))
+    path = pasta / 'Lista_Material_1637_01_26_LINHAS_DIREITAS.xlsx'
+    lista.save(path)
+    custo = Workbook()
+    custo.active.title = '5_Custo_Obra_Ferragens'
+    custo.active.append(('Nome iMos (Nome Uniao)', 'Ref PHC', 'Qt', 'Un'))
+    custo.active.append(('CAVILHA', 'FF00001', 30, 'un'))
+    fonte = pasta / svc.HARDWARE_FILENAME
+    custo.save(fonte)
+    svc.import_hardware_cost(path, fonte, substituir=True)
+    livro = _LIVROS[0]
+    assert [f.Name for f in livro.folhas] == ['LISTAGEM_CUT_RITE', '5_Custo_Obra_Ferragens', 'LOG']
+
+
+def test_custo_por_posicao_no_excel():
+    # O Copy por nome (Before=/After=) não chega ao Excel por COM tardio.
+    fonte = inspect.getsource(svc.import_hardware_cost)
+    assert 'Copy(Before=' not in fonte and 'Copy(After=' not in fonte

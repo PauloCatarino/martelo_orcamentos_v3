@@ -3528,6 +3528,30 @@ Guião de teste:
    5_Custo_Obra_Ferragens; na LISTAGEM_CUT_RITE, coluna Notas como acima.
 5. Repor a Ligação iMos (`imos_le`).
 
+### Custo das ferragens: o separador 5_Custo_Obra_Ferragens ficava com o LOG (2026-11-19, CORRIGIDO)
+
+Achado ao validar a lista de ensaio da 1957 (a lista de ferragens já trazia 1_FERRAGENS, 2_PURCH e 3_SPP depois do F213
+na TESTE02). O separador **5_Custo_Obra_Ferragens** tinha as 2 linhas do LOG («Livro criado pelo Martelo V3») e o LOG tinha
+desaparecido. **Também nas listas reais:** a `Lista_Material_1910_01_26_LINHAS_DIREITAS.xlsm` (19-11, 13:42) está assim.
+- Causa: `import_hardware_cost` (`analise_lista_material_service.py`, desde a 1.0.15 de 08-09) chamava
+  `Copy(After=…)` / `Copy(Before=…)` com o argumento POR NOME. Pela ligação COM tardia do Martelo o nome não chega ao
+  Excel: a folha ia para um livro novo, escondido, e o Martelo mudava o nome ao último separador do livro (o LOG). Ao
+  SUBSTITUIR era pior: apagava o separador antigo e mudava o nome a outro qualquer. Confirmado com o Excel verdadeiro.
+- Correção: os argumentos vão por POSIÇÃO (`Copy(antes)` / `Copy(None, depois)`), confirma-se que entrou um separador a
+  mais (senão pára sem gravar) e, ao substituir, só se apaga o antigo depois de a cópia estar no livro. O Excel a fingir
+  dos testes passou a portar-se como o verdadeiro (ignora os argumentos por nome); testes novos do LOG e da substituição.
+- Verificado com o Excel verdadeiro na cópia da 1957: LOG fica; 5_Custo_Obra_Ferragens com as 26 linhas da lista.
+- **Listas já feitas:** ficam com o separador errado até se importar outra vez o custo (Análise da Lista Material →
+  «Custo de produção (parcial)» → «Importar custo de ferragens…», ou o passo 3), com a versão nova. O LOG perdido não volta.
+- Chega aos colegas só com uma **versão nova** (decisão do Paulo).
+
+Guião de teste:
+1. Fechar e voltar a abrir o Martelo (pasta principal); Ligação iMos = `imos_LE_TESTE02`.
+2. Produção → obra 1957 → Funções → «Lista Material da base iMos (ensaio)…» → Yes a tudo; no passo 3 gerar as listas.
+3. No Excel de ensaio: o separador **LOG** continua lá; **5_Custo_Obra_Ferragens** começa por «Custo da obra - ferragens»
+   e tem as ferragens (não «Data / Utilizador / Ação»).
+4. Repor a Ligação iMos (`imos_le`).
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em
