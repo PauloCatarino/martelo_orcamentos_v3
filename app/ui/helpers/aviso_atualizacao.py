@@ -31,6 +31,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from app.core import diario_bordo
 from app.domain import agenda_diaria_phc
+from app.ui.helpers.novidades_versao import abrir_novidades, botao_ver_novidades
 from app.services.atualizacao_service import (
     EstadoVersao,
     InstaladorIndisponivel,
@@ -157,7 +158,14 @@ def perguntar_instalar(
         "\n\n«Mais tarde»: volto a lembrar amanhã de manhã. Também pode "
         "instalar quando quiser em Ajuda → «Atualizar agora…»."
     )
+    if estado.novidades_disponivel is not None:
+        texto += (
+            f"\n\nO que muda: «Ver as novidades da {estado.disponivel}» abre-as no "
+            "navegador (cada alteração começa pela área: Orçamentos, Produção, Geral)."
+        )
     caixa.setInformativeText(texto)
+    # 19-11-2026: ver o que muda antes de instalar, como nos programas a sério.
+    novidades = botao_ver_novidades(caixa, estado.disponivel, estado.novidades_disponivel)
     instalar = caixa.addButton("Instalar agora", QMessageBox.ButtonRole.AcceptRole)
     instalar.setToolTip(
         f"Fechar o Martelo e instalar a versão {estado.disponivel} por cima da atual"
@@ -167,8 +175,13 @@ def perguntar_instalar(
     # A caixa aparece sozinha: um Enter de quem estava a escrever não instala.
     caixa.setDefaultButton(depois)
     caixa.setEscapeButton(depois)
-    caixa.exec()
-    return caixa.clickedButton() is instalar
+    while True:
+        caixa.exec()
+        if novidades is not None and caixa.clickedButton() is novidades:
+            # Abre o navegador e a pergunta volta.
+            abrir_novidades(parent, estado.novidades_disponivel)
+            continue
+        return caixa.clickedButton() is instalar
 
 
 def _ler_estado() -> EstadoVersao:

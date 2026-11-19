@@ -21,9 +21,11 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config.versao import version_completa
+from app.domain import novidades_versao
 from app.domain.versoes_instalador import (
     escolher_mais_recente,
     ha_versao_mais_recente,
+    versao_para_ordem,
 )
 from app.services.system_setting_service import SystemSettingService
 
@@ -41,6 +43,50 @@ class EstadoVersao:
     pasta: Path | None
     ha_atualizacao: bool
     problema: str | None = None
+    #: O HTML das novidades da versão disponível, se já estiver no servidor.
+    novidades_disponivel: Path | None = None
+
+
+@dataclass(frozen=True)
+class Novidades:
+    """As novidades de uma versão (HTML e, se houver, PDF)."""
+
+    versao: str
+    html: Path
+    pdf: Path | None = None
+
+
+def listar_novidades(pasta: Path) -> list[Novidades]:
+    """As novidades que estão na pasta dos instaladores, da mais recente para a mais antiga.
+
+    Procura primeiro na subpasta ``Novidades`` e depois na própria pasta (onde
+    ficaram as da 1.0.32). Erros de rede devolvem a lista vazia.
+    """
+    encontrados: dict[str, dict[str, Path]] = {}
+    for sitio in (pasta / novidades_versao.PASTA_NOVIDADES, pasta):
+        try:
+            nomes = [f.name for f in sitio.iterdir() if f.is_file()]
+        except OSError:
+            continue
+        for nome in nomes:
+            ficheiro = novidades_versao.ler_nome(nome)
+            if ficheiro is None:
+                continue
+            # A subpasta ganha: só se usa a raiz para o que lá não estiver.
+            encontrados.setdefault(ficheiro.versao, {}).setdefault(ficheiro.extensao, sitio / nome)
+    lista = [
+        Novidades(versao=v, html=f["html"], pdf=f.get("pdf"))
+        for v, f in encontrados.items()
+        if "html" in f
+    ]
+    return sorted(lista, key=lambda n: versao_para_ordem(n.versao), reverse=True)
+
+
+def novidades_da_versao(pasta: Path | None, versao: str | None) -> Novidades | None:
+    """As novidades de uma versão, ou None."""
+    if pasta is None or not versao:
+        return None
+    return next((n for n in listar_novidades(pasta) if n.versao == versao), None)
 
 
 class AtualizacaoService:
@@ -48,6 +94,14 @@ class AtualizacaoService:
 
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def pasta(self) -> Path | None:
+        """A pasta dos instaladores (Configurações → Caminhos do Sistema), ou None."""
+        caminho = (
+            SystemSettingService(self.session).obter_valor(CHAVE_PASTA_INSTALADORES)
+            or ""
+        ).strip()
+        return Path(caminho) if caminho else None
 
     def estado(self) -> EstadoVersao:
         instalada = version_completa()
@@ -99,12 +153,14 @@ class AtualizacaoService:
                 ),
             )
 
+        novidades = novidades_da_versao(pasta, mais_recente.versao)
         return EstadoVersao(
             instalada=instalada,
             disponivel=mais_recente.versao,
             caminho_instalador=pasta / mais_recente.nome_ficheiro,
             pasta=pasta,
             ha_atualizacao=ha_versao_mais_recente(instalada, mais_recente.versao),
+            novidades_disponivel=novidades.html if novidades else None,
         )
 
 

@@ -40,6 +40,7 @@ from app.ui.helpers.verificacao_escritorio_streamlit import (
 )
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
 from app.ui.helpers.aviso_atualizacao import AvisoAtualizacao
+from app.ui.helpers.novidades_versao import NovidadesAposAtualizar
 from app.ui.helpers.registo_horas_avisos import AvisosRegistoHoras
 from app.ui.helpers.traducoes_imos import AvisoTraducoesImos
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
@@ -605,6 +606,9 @@ class MainWindow(QMainWindow):
             pode_fechar=self.pode_fechar_tudo,
             trabalho_aberto=self._trabalho_aberto,
         )
+        # Novidades (19-11-2026): no 1.º arranque de uma versão nova, «O Martelo
+        # foi atualizado — ver as novidades». Só no Martelo instalado.
+        self._novidades_versao = NovidadesAposAtualizar(self)
         # Registo de Horas: lembrete dos dias por registar e envio do mês à
         # contabilidade (dia 2, 9h20). O administrador vê as folhas de todos
         # mas não regista horas: não recebe estes avisos.

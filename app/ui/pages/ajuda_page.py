@@ -10,8 +10,10 @@ número da versão instalada e o aviso de que há uma nova no servidor.
 from __future__ import annotations
 
 import html
+from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
 from app.config.versao import version_completa
 from app.ui import tema
 from app.ui.helpers.aviso_atualizacao import instalar_e_fechar
+from app.ui.helpers.novidades_versao import abrir_novidades, botao_ver_novidades
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 
 
@@ -44,7 +47,13 @@ class AjudaPage(QWidget):
             )
         )
         layout.addWidget(self._criar_caixa_versao())
+        layout.addWidget(self._criar_caixa_novidades())
         layout.addStretch()
+        # Linha de estado («supervisor»), como em todos os menus.
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet(f"color:{tema.CINZA_ESCURO};")
+        layout.addWidget(self.status_label)
 
     # ----- Versão do Martelo -----
 
@@ -142,6 +151,137 @@ class AjudaPage(QWidget):
             )
             self.atualizar_versao_button.setVisible(False)
 
+    # ----- Novidades das versões -----
+
+    def _criar_caixa_novidades(self) -> QGroupBox:
+        """O que mudou em cada versão, e onde estão os instaladores (19-11-2026).
+
+        As novidades são HTML/PDF na subpasta ``Novidades`` da pasta dos
+        instaladores; cada alteração começa pela área (Orçamentos, Produção, Geral).
+        """
+        caixa = QGroupBox("Novidades das versões")
+        layout = QVBoxLayout(caixa)
+
+        self.pasta_label = QLabel("A verificar…")
+        self.pasta_label.setWordWrap(True)
+        self.pasta_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(self.pasta_label)
+
+        self.novidades_label = QLabel("")
+        self.novidades_label.setWordWrap(True)
+        self.novidades_label.setOpenExternalLinks(False)
+        self.novidades_label.linkActivated.connect(self._abrir_link)
+        self.novidades_label.setToolTip(
+            "Clique numa versão para abrir as novidades no navegador (HTML) ou o PDF"
+        )
+        layout.addWidget(self.novidades_label)
+
+        self.ver_novidades_button = QPushButton("Novidades desta versão")
+        self.ver_novidades_button.setToolTip(
+            "Abrir no navegador o que mudou na versão que está instalada neste PC"
+        )
+        self.ver_novidades_button.clicked.connect(self._ver_novidades_instalada)
+        self.abrir_pasta_button = QPushButton("Abrir a pasta das atualizações")
+        self.abrir_pasta_button.setToolTip(
+            "Abrir no Explorador a pasta do servidor com os instaladores e as novidades"
+        )
+        self.abrir_pasta_button.clicked.connect(self._abrir_pasta)
+
+        linha = QHBoxLayout()
+        linha.addWidget(self.ver_novidades_button)
+        linha.addWidget(self.abrir_pasta_button)
+        linha.addStretch()
+        layout.addLayout(linha)
+
+        self._pasta_instaladores: Path | None = None
+        self._novidades: list = []
+        QTimer.singleShot(0, self.ler_novidades)
+        return caixa
+
+    def ler_novidades(self) -> None:
+        """Ler a pasta dos instaladores e listar as novidades que lá estão."""
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.db.session import SessionLocal
+        from app.services.atualizacao_service import AtualizacaoService, listar_novidades
+
+        try:
+            with SessionLocal() as session:
+                pasta = AtualizacaoService(session).pasta()
+            novidades = listar_novidades(pasta) if pasta else []
+        except (SQLAlchemyError, OSError) as erro:
+            self.pasta_label.setText(
+                f"Não foi possível ver a pasta das atualizações: {html.escape(str(erro))}"
+            )
+            self.ver_novidades_button.setEnabled(False)
+            self.abrir_pasta_button.setEnabled(False)
+            return
+
+        self._pasta_instaladores = pasta
+        self._novidades = novidades
+        if pasta is None:
+            self.pasta_label.setText(
+                "A pasta dos instaladores ainda não está definida "
+                "(Configurações → Caminhos do Sistema)."
+            )
+        else:
+            self.pasta_label.setText(
+                f"Pasta das atualizações (instaladores e novidades):<br><b>{html.escape(str(pasta))}</b>"
+            )
+        self.abrir_pasta_button.setEnabled(pasta is not None)
+
+        if not novidades:
+            self.novidades_label.setText("Ainda não há novidades na pasta.")
+        else:
+            linhas = []
+            for indice, n in enumerate(novidades[:8]):
+                pdf = f" · <a href='p:{indice}'>PDF</a>" if n.pdf else ""
+                linhas.append(
+                    f"Versão <a href='h:{indice}'><b>{html.escape(n.versao)}</b></a>{pdf}"
+                )
+            self.novidades_label.setText(
+                "Novidades (cada alteração começa pela área — Orçamentos, Produção ou "
+                "Geral):<br>" + "<br>".join(linhas)
+            )
+        instalada = version_completa()
+        tem = any(n.versao == instalada for n in novidades)
+        self.ver_novidades_button.setEnabled(tem)
+        self.ver_novidades_button.setText(f"Novidades desta versão ({instalada})")
+        if not tem:
+            self.ver_novidades_button.setToolTip(
+                f"Ainda não há novidades da {instalada} na pasta das atualizações"
+            )
+
+    def _abrir_link(self, link: str) -> None:
+        tipo, _, indice = link.partition(":")
+        try:
+            novidades = self._novidades[int(indice)]
+        except (ValueError, IndexError):
+            return
+        caminho = novidades.pdf if tipo == "p" else novidades.html
+        if abrir_novidades(self, caminho):
+            self.status_label.setText(f"Abertas as novidades da {novidades.versao}.")
+
+    def _ver_novidades_instalada(self) -> None:
+        instalada = version_completa()
+        novidades = next((n for n in self._novidades if n.versao == instalada), None)
+        if novidades is not None and abrir_novidades(self, novidades.html):
+            self.status_label.setText(f"Abertas as novidades da {instalada}.")
+
+    def _abrir_pasta(self) -> None:
+        pasta = self._pasta_instaladores
+        if pasta is None:
+            return
+        if QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta))):
+            self.status_label.setText("Aberta a pasta das atualizações.")
+        else:
+            QMessageBox.warning(
+                self, "Pasta das atualizações",
+                f"Não foi possível abrir a pasta:\n{pasta}\n\nVerifique a ligação ao servidor.",
+            )
+
     def _atualizar_martelo(self) -> None:
         """Confirmar, abrir o instalador e fechar o Martelo."""
         estado = getattr(self, "_estado_versao", None)
@@ -155,14 +295,27 @@ class AjudaPage(QWidget):
             "tiver aberto antes de continuar.\n\n"
             f"Instalador:\n{estado.caminho_instalador}"
         )
-        resposta = QMessageBox.question(
-            self,
-            "Atualizar o Martelo",
-            aviso,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        caixa = QMessageBox(self)
+        caixa.setIcon(QMessageBox.Icon.Question)
+        caixa.setWindowTitle("Atualizar o Martelo")
+        caixa.setText(aviso)
+        # 19-11-2026: ver o que muda antes de instalar.
+        novidades = botao_ver_novidades(
+            caixa, estado.disponivel, estado.novidades_disponivel
         )
-        if resposta != QMessageBox.StandardButton.Yes:
+        sim = caixa.addButton("Instalar", QMessageBox.ButtonRole.YesRole)
+        sim.setToolTip("Fechar o Martelo e abrir o instalador da versão nova")
+        nao = caixa.addButton("Cancelar", QMessageBox.ButtonRole.NoRole)
+        nao.setToolTip("Não instalar agora")
+        caixa.setDefaultButton(nao)
+        caixa.setEscapeButton(nao)
+        while True:
+            caixa.exec()
+            if novidades is not None and caixa.clickedButton() is novidades:
+                abrir_novidades(self, estado.novidades_disponivel)
+                continue
+            break
+        if caixa.clickedButton() is not sim:
             return
 
         # A mesma passagem que o aviso da manhã: antes de fechar, todos os

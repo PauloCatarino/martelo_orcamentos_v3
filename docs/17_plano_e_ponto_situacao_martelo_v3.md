@@ -3552,6 +3552,38 @@ Guião de teste:
    e tem as ferragens (não «Data / Utilizador / Ação»).
 4. Repor a Ligação iMos (`imos_le`).
 
+### Novidades de cada versão («What's New») (2026-11-19)
+
+Pedido do Paulo: como nos programas a sério, quem instala uma versão nova vê o que mudou — antes de instalar e depois
+— e as novidades ficam organizadas no servidor, com cada alteração a começar pela ÁREA (Orçamentos, Produção, Geral),
+porque nem todos têm interesse em tudo.
+- **Onde ficam:** subpasta `Novidades` da pasta dos instaladores
+  (`\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos\Instalador_Setup_Martelo\Novidades`):
+  `Novidades_Martelo_V3_<versão>.html` e `.pdf`. As da 1.0.32 ficaram também soltas na pasta (o Martelo encontra as
+  duas; a subpasta ganha). O título do separador do navegador começa pela área («Produção · Martelo V3 1.0.33 —
+  Novidades») e cada secção tem a etiqueta da área.
+- **Antes de instalar:** a caixa do aviso da manhã e a do «Atualizar agora…» (Ajuda) têm o botão
+  **«Ver as novidades da X»**; abre o HTML no navegador e a pergunta volta.
+- **Depois de instalar:** no 1.º arranque da versão nova (15 s depois de abrir), caixa **«O Martelo foi atualizado
+  para a versão X — Ver as novidades / Agora não»**. Quem saltou versões vê as de todas as que saltou. A versão já
+  mostrada fica neste PC (`QSettings`, `novidades/ultima_versao_vista`); se as novidades ainda não estiverem no
+  servidor, tenta no próximo arranque. Só no Martelo instalado.
+- **Menu Ajuda:** caixa nova **«Novidades das versões»** com o caminho da pasta das atualizações, a lista das
+  versões com novidades (HTML e PDF clicáveis), «Novidades desta versão» e «Abrir a pasta das atualizações»; linha de
+  estado em baixo.
+- Código: `app/domain/novidades_versao.py`, `listar_novidades` em `atualizacao_service.py`,
+  `app/ui/helpers/novidades_versao.py`. As novidades escrevem-se à mão para cada versão (fonte no scratchpad da
+  sessão; modelo: estilo da 1.0.32 com as etiquetas de área).
+
+Guião de teste (depois de instalar a 1.0.34 num PC com a 1.0.33):
+1. Antes de instalar: Ajuda → «Atualizar agora para a 1.0.34…» → na caixa, **«Ver as novidades da 1.0.34»**. Esperado:
+   abre no navegador, com o separador «Geral · Martelo V3 1.0.34 — Novidades»; a caixa volta. Instalar.
+2. Abrir o Martelo 1.0.34 e esperar 15 s. Esperado: «O Martelo foi atualizado para a versão 1.0.34» → «Ver as
+   novidades» abre a 1.0.34 (e a 1.0.33, se o PC vinha da 1.0.32).
+3. Fechar e abrir outra vez. Esperado: a caixa já não aparece.
+4. Ajuda → «Novidades das versões»: o caminho da pasta, a lista 1.0.34 / 1.0.33 / 1.0.32 com PDF, «Novidades desta
+   versão (1.0.34)» e «Abrir a pasta das atualizações» funcionam.
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em
