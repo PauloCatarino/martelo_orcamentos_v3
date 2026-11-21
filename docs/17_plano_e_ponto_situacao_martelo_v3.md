@@ -3662,9 +3662,10 @@ subartigo, essa zona é para **montar internamente**. A peça cuja coluna `Artig
   compilado, `Import_Base_Imos_1` + `Preencher_Tabela_Cut_Rite`): 50 linhas; as 19 linhas de BL01 (14) e NICHO (5)
   levam `#MONTAR#` (as 4 «Gaveteiro Lateral Gaveta» ficam `Rasgo 13mm + … + Rebaixo16mm + #MONTAR#`); as 31 de
   RP_A_01, incluindo a `Sanca` da posição `RP_A_01_RDTT`, não levam nada; aviso «25 peças (subartigos BL01, NICHO)».
-- **Falta (com o sim do Paulo):** escrever o módulo no modelo COLAR do servidor
-  (`scripts/atualizar_macros_modelo_lista_material.py <COLAR.xltm> modImportCSVImos_1`, faz cópia `_backup_` ao lado)
-  e, se quiser, também no modelo de sempre. Só as listas criadas **depois** disso trazem a regra.
+- **Modelo COLAR do servidor escrito (21-11, 10h10, com o sim do Paulo):**
+  `scripts/atualizar_macros_modelo_lista_material.py <COLAR.xltm> modImportCSVImos_1`; cópia
+  `Lista_Material_IMOS_MARTELO_COLAR_backup_20261121_101044.xltm` ao lado; os outros módulos ficaram iguais.
+  O modelo de sempre não foi mexido. Só as listas criadas **a partir de agora** trazem a regra.
 
 Guião de teste (depois de o módulo estar no modelo COLAR do servidor):
 1. Fechar e voltar a abrir o Martelo **da pasta principal**; Configurações › Ligação iMos = `imos_le`.
