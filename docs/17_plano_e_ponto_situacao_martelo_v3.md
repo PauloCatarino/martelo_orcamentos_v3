@@ -3639,6 +3639,47 @@ Guião de teste:
 6. Depois da versão nova instalada: num PC onde o antivírus trave o Martelo, a caixa diz «O Windows não deixou o Martelo
    arrancar o PowerShell (Acesso negado), nem à 3.ª tentativa…» com o que fazer, em vez de só «Acesso negado».
 
+### Subartigos: nota `#MONTAR#` nas peças das zonas passadas a subartigo (2026-11-21, POR TESTAR)
+
+Pedido do Paulo (21-11): regra da empresa — quando, no iMos, o utilizador passa uma zona do artigo principal a
+subartigo, essa zona é para **montar internamente**. A peça cuja coluna `Artigo/SubArtigo` é **diferente** da
+`ArtigoNome` leva a nota `#MONTAR#` na coluna **Notas** da LISTAGEM_CUT_RITE, para a fábrica a identificar.
+
+- **Onde:** na macro de importação (`scripts/vba/modImportCSVImos_1.bas`, função `Marcar_Montar_Subartigos`), na
+  folha da importação, logo a seguir à verificação do Rasgo e antes de passar para a LISTA_ORDENADA. É lá que estão as
+  colunas `Artigo/SubArtigo` e `ArtigoNome` (não chegam à LISTA_ORDENADA nem à LISTAGEM_CUT_RITE). As Notas seguem pelo
+  caminho de sempre: LISTA_ORDENADA → `Preencher_Tabela_Cut_Rite` (macro `modCutRite_Mapeamento`, só do modelo, copia a
+  coluna Notas pelo nome) → LISTAGEM_CUT_RITE.
+- **Notas:** vazia → `#MONTAR#`; com texto → `texto + #MONTAR#` (o texto fica; o « + » é o mesmo do alerta do CAM);
+  já com `#MONTAR#` → fica como está. A comparação ignora maiúsculas/espaços; linha sem uma das duas colunas
+  preenchida não leva nada; CSV sem as duas colunas (CSV antigo) → a regra não faz nada.
+- **Aviso no fim da importação** (caixa «Subartigos: nota #MONTAR#», por artigo, peças = soma da Qt.):
+  «No artigo RP_A_01 foi adicionada a nota #MONTAR# em 25 peças (subartigos BL01, NICHO). … Confirme na
+  LISTAGEM_CUT_RITE (coluna Notas) se pretende manter.» Mais de 15 artigos → «… e mais N artigo(s).»
+- Vale para as duas importações: `Import_Base_Imos_1` (lista da base do iMos, ensaio) e `Import_CSV_Imos_1`
+  (CSV do `.cfg`, quando trouxer as duas colunas — o `.cfg` V1 tem-nas). O fluxo do CSV **não foi testado** por mim.
+- **Provado numa cópia** da lista de ensaio da obra **1912_01_26_LINHAS_DIREITAS** (módulo escrito na cópia,
+  compilado, `Import_Base_Imos_1` + `Preencher_Tabela_Cut_Rite`): 50 linhas; as 19 linhas de BL01 (14) e NICHO (5)
+  levam `#MONTAR#` (as 4 «Gaveteiro Lateral Gaveta» ficam `Rasgo 13mm + … + Rebaixo16mm + #MONTAR#`); as 31 de
+  RP_A_01, incluindo a `Sanca` da posição `RP_A_01_RDTT`, não levam nada; aviso «25 peças (subartigos BL01, NICHO)».
+- **Falta (com o sim do Paulo):** escrever o módulo no modelo COLAR do servidor
+  (`scripts/atualizar_macros_modelo_lista_material.py <COLAR.xltm> modImportCSVImos_1`, faz cópia `_backup_` ao lado)
+  e, se quiser, também no modelo de sempre. Só as listas criadas **depois** disso trazem a regra.
+
+Guião de teste (depois de o módulo estar no modelo COLAR do servidor):
+1. Fechar e voltar a abrir o Martelo **da pasta principal**; Configurações › Ligação iMos = `imos_le`.
+2. Produção → obra **26.1912_01_01_LINHAS_DIREITAS** → Funções → «Lista Material da base iMos (ensaio)…» → «Yes» nos
+   passos. Esperado: no fim da importação aparece a caixa «Subartigos: nota #MONTAR#» com «No artigo RP_A_01 foi
+   adicionada a nota #MONTAR# em 25 peças (subartigos BL01, NICHO).» → OK.
+3. Abrir o Excel de ensaio (`Ensaio_Lista_Base_iMos\Lista_Material_1912_01_26_LINHAS_DIREITAS_BASE.xlsm`) → folha
+   LISTAGEM_CUT_RITE → filtrar a coluna Artigo por `RP_A_01_BL01_4P` e `RP_A_01_NICHO_4P`. Esperado: todas com
+   `#MONTAR#` nas Notas; as «Gaveteiro Lateral Gaveta» com `Rasgo 13mm + Parede 11mm + Prof 10.5mm + Rebaixo16mm +
+   #MONTAR#`.
+4. Filtrar por `RP_A_01_4P` e `RP_A_01_RDTT` (Sanca). Esperado: nenhuma com `#MONTAR#`; as Guarnições continuam com
+   `Rasgo 'Tupia' MDF 3MM 1 comp`.
+5. Obra sem subartigos (ex. uma roupeiro simples): Esperado: nenhuma caixa «Subartigos» e nenhuma nota `#MONTAR#`.
+6. Na LISTAGEM_CUT_RITE apagar à mão um `#MONTAR#` que não queira e «Enviar CUT-RITE». Esperado: segue o que lá ficou.
+
 ## Cópias de segurança: pasta nova no servidor (2026-11-06)
 
 Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em

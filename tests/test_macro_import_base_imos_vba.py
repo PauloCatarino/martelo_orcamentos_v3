@@ -126,3 +126,46 @@ def test_veio_tambem_na_linha_sem_material() -> None:
     inicio = codigo.index("Private Sub Converter_Veio_ListaOrdenada(")
     corpo = codigo[inicio:codigo.index("End Sub", inicio)]
     assert 'wsLO.Cells(wsLO.Rows.Count, "B").End(xlUp).Row > lastRow' in corpo
+
+
+def _funcao(nome: str) -> str:
+    codigo = _codigo()
+    inicio = codigo.index(f"Private Function {nome}(")
+    return codigo[inicio:codigo.index("End Function", inicio)]
+
+
+def test_nota_montar_nas_duas_importacoes_entre_o_rasgo_e_a_lista() -> None:
+    # 21-11-2026: zona do artigo passada a subartigo no iMos = montar na fabrica.
+    for nome in ("Import_CSV_Imos_1", "Import_Base_Imos_1"):
+        corpo = _sub(nome)
+        rasgo = corpo.index("VerificarECorrigir_Rasgo_Em_Notas wsImport")
+        montar = corpo.index("avisoMontar = Marcar_Montar_Subartigos(wsImport)")
+        lista = corpo.index("Criar_Lista_Ordenada wsImport,")
+        assert rasgo < montar < lista
+        # o aviso sai no fim, depois da mensagem de importação concluída
+        aviso = corpo.index("If Len(avisoMontar) > 0 Then MsgBox avisoMontar")
+        assert corpo.index("vbInformation", lista) < aviso < corpo.index("CleanExit:")
+
+
+def test_nota_montar_compara_subartigo_com_artigonome() -> None:
+    corpo = _funcao("Marcar_Montar_Subartigos")
+    assert 'Private Const NOTA_MONTAR As String = "#MONTAR#"' in _codigo()
+    assert 'FindColByHeader(ws, 2, "Artigo/SubArtigo")' in corpo
+    assert 'FindColByHeader(ws, 2, "ArtigoNome")' in corpo
+    assert 'FindColByHeader(ws, 2, "Notas")' in corpo
+    # sem as colunas (CSV antigo) não faz nada
+    assert "If colSub * colNome * colNotas = 0 Then Exit Function" in corpo
+    assert "StrComp(artSub, artNome, vbTextCompare) <> 0" in corpo
+    # não repete a nota
+    assert "InStr(1, notas, NOTA_MONTAR, vbTextCompare) = 0" in corpo
+    # aviso por artigo, com os subartigos
+    assert '"No artigo " & k & " foi adicionada a nota " & NOTA_MONTAR' in corpo
+    assert "Confirme na LISTAGEM_CUT_RITE (coluna Notas) se pretende manter." in corpo
+
+
+def test_nota_montar_mantem_o_texto_que_ja_la_esta() -> None:
+    corpo = _funcao("JuntarNotaMontar")
+    assert "JuntarNotaMontar = NOTA_MONTAR" in corpo
+    assert 'JuntarNotaMontar = notas & " + " & NOTA_MONTAR' in corpo
+    # nota começada por = + - @ vai como texto, não como fórmula
+    assert "InStr(1, \"=+-@\", Left$(s, 1)) > 0 Then s = \"'\" & s" in _funcao("TextoParaCelula")

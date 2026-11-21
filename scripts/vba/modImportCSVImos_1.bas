@@ -25,6 +25,8 @@ Option Explicit
 '      (procura a espessura em linhas "Gaveteiro Fundo Gaveta" por RP)
 '   7) Ordena por sequência da DEFENICOES!A4:A... e copia para LISTA_ORDENADA
 '      (valores apenas) e com mapeamento RP -> Artigo
+'   6b) 21-11-2026: nota #MONTAR# nas pecas dos subartigos (coluna
+'       "Artigo/SubArtigo" diferente da "ArtigoNome") + aviso no fim
 '   8) Converte o "Veio" na LISTA_ORDENADA (coluna H):
 '         "1" -> "S" / "0" -> "N"
 '      e aplica exceções onde o veio não interessa (força "N")
@@ -37,6 +39,11 @@ Private Const PASTA_CSV As String = "I:\Cutrite\Work\Cutrite_Import_CSV\"
 ' preenchida pelo NOME das colunas (o CSV do Martelo ja nao tem as 22 colunas do
 ' .cfg pela mesma ordem). A Import_CSV_Imos_1 continua a copiar por posicao.
 Private mCopiarPorNome As Boolean
+
+' 21-11-2026: nota das pecas dos subartigos (zona do artigo passada a
+' subartigo no iMos = para montar na fabrica). Ver Marcar_Montar_Subartigos.
+Private Const NOTA_MONTAR As String = "#MONTAR#"
+Private Const TITULO_AVISO_MONTAR As String = "Subartigos: nota #MONTAR#"
 
 '--------------------------
 ' MACRO PRINCIPAL
@@ -88,6 +95,10 @@ Public Sub Import_CSV_Imos_1()
     ' 6) Verificar/Corrigir Notas Rasgo (abre UserForm se houver correções)
     VerificarECorrigir_Rasgo_Em_Notas wsImport
 
+    ' 6b) Nota #MONTAR# nas peças dos subartigos (o aviso sai no fim)
+    Dim avisoMontar As String
+    avisoMontar = Marcar_Montar_Subartigos(wsImport)
+
     ' 7) Copiar ordenado para LISTA_ORDENADA
     Criar_Lista_Ordenada wsImport, ThisWorkbook.Worksheets("DEFENICOES"), ThisWorkbook.Worksheets("LISTA_ORDENADA")
 
@@ -99,6 +110,7 @@ Public Sub Import_CSV_Imos_1()
         "Importação concluída com sucesso para: " & numProcesso, _
         1, "Microsoft Excel", vbInformation
     On Error GoTo EH
+    If Len(avisoMontar) > 0 Then MsgBox avisoMontar, vbInformation, TITULO_AVISO_MONTAR
 CleanExit:
     Application.Calculation = oldCalc
     Application.EnableEvents = True
@@ -735,6 +747,119 @@ Private Sub CopiarLinha_PorNome(ByVal wsImp As Worksheet, ByVal rowImp As Long, 
     Next c
 End Sub
 
+'====================================================================
+'  21-11-2026: NOTA #MONTAR# NAS PEÇAS DOS SUBARTIGOS
+'--------------------------------------------------------------------
+'  Regra da empresa: quando, no iMos, o utilizador passa uma zona do
+'  artigo principal a subartigo, essa zona é para montar internamente.
+'  Na folha da importação, a peça cuja coluna "Artigo/SubArtigo" é
+'  diferente da coluna "ArtigoNome" leva a nota #MONTAR# na coluna Notas:
+'    - Notas vazia  -> "#MONTAR#"
+'    - Notas c/ texto -> "texto + #MONTAR#" (o texto fica)
+'    - já tem #MONTAR# -> fica como está (não repete)
+'  As Notas seguem para a LISTA_ORDENADA e daí para a LISTAGEM_CUT_RITE
+'  (Preencher_Tabela_Cut_Rite). Sem as duas colunas (CSV antigo) não faz
+'  nada. Devolve o texto do aviso, por artigo (vazio = nenhuma peça).
+'====================================================================
+Private Function Marcar_Montar_Subartigos(ByVal ws As Worksheet) As String
+
+    Dim colSub As Long, colNome As Long, colNotas As Long, colQt As Long
+    colSub = FindColByHeader(ws, 2, "Artigo/SubArtigo")
+    colNome = FindColByHeader(ws, 2, "ArtigoNome")
+    colNotas = FindColByHeader(ws, 2, "Notas")
+    If colSub * colNome * colNotas = 0 Then Exit Function
+    colQt = FindColByHeaderFlex(ws, 2, Array("Qt.", "Qt", "QT"))
+
+    Dim lastRow As Long
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 3 Then Exit Function
+
+    Dim pecas As Object, subs As Object
+    Set pecas = CreateObject("Scripting.Dictionary")   ' ArtigoNome -> nº de peças
+    Set subs = CreateObject("Scripting.Dictionary")    ' ArtigoNome -> "BL01|NICHO"
+    pecas.CompareMode = vbTextCompare
+    subs.CompareMode = vbTextCompare
+
+    Dim r As Long, qt As Double
+    Dim artSub As String, artNome As String, notas As String
+
+    For r = 3 To lastRow
+        artSub = Trim$(TextoCelula(ws.Cells(r, colSub).Value))
+        artNome = Trim$(TextoCelula(ws.Cells(r, colNome).Value))
+        If Len(artSub) > 0 And Len(artNome) > 0 Then
+            If StrComp(artSub, artNome, vbTextCompare) <> 0 Then
+                notas = TextoCelula(ws.Cells(r, colNotas).Value)
+                If InStr(1, notas, NOTA_MONTAR, vbTextCompare) = 0 Then
+
+                    ws.Cells(r, colNotas).Value = TextoParaCelula(JuntarNotaMontar(notas))
+
+                    qt = 1
+                    If colQt > 0 Then qt = Val(Replace(TextoCelula(ws.Cells(r, colQt).Value), ",", "."))
+                    If Not pecas.Exists(artNome) Then
+                        pecas.Add artNome, 0
+                        subs.Add artNome, ""
+                    End If
+                    pecas(artNome) = pecas(artNome) + qt
+                    If InStr(1, "|" & subs(artNome) & "|", "|" & artSub & "|", vbTextCompare) = 0 Then
+                        If Len(subs(artNome)) = 0 Then
+                            subs(artNome) = artSub
+                        Else
+                            subs(artNome) = subs(artNome) & "|" & artSub
+                        End If
+                    End If
+
+                End If
+            End If
+        End If
+    Next r
+
+    If pecas.Count = 0 Then Exit Function
+
+    Dim k As Variant, txt As String, nArt As Long, nomesSub As String
+    For Each k In pecas.Keys
+        nArt = nArt + 1
+        If nArt > 15 Then
+            txt = txt & "... e mais " & (pecas.Count - 15) & " artigo(s)." & vbCrLf
+            Exit For
+        End If
+        nomesSub = Replace(subs(k), "|", ", ")
+        txt = txt & "No artigo " & k & " foi adicionada a nota " & NOTA_MONTAR & " em " & _
+              pecas(k) & IIf(pecas(k) = 1, " peça", " peças") & _
+              IIf(InStr(subs(k), "|") > 0, " (subartigos ", " (subartigo ") & nomesSub & ")." & vbCrLf
+    Next k
+
+    Marcar_Montar_Subartigos = txt & vbCrLf & _
+        "Zona do artigo passada a subartigo no iMos = para montar na fábrica." & vbCrLf & _
+        "Confirme na LISTAGEM_CUT_RITE (coluna Notas) se pretende manter."
+
+End Function
+
+' "texto" -> "texto + #MONTAR#"; vazio -> "#MONTAR#" (como o juntar_nota do Martelo)
+Private Function JuntarNotaMontar(ByVal notas As String) As String
+    If Len(Trim$(notas)) = 0 Then
+        JuntarNotaMontar = NOTA_MONTAR
+    Else
+        JuntarNotaMontar = notas & " + " & NOTA_MONTAR
+    End If
+End Function
+
+' Texto de uma célula sem rebentar com erros (#N/D...) nem números
+Private Function TextoCelula(ByVal v As Variant) As String
+    If IsError(v) Or IsEmpty(v) Or IsNull(v) Then
+        TextoCelula = ""
+    Else
+        TextoCelula = CStr(v)
+    End If
+End Function
+
+' Uma nota começada por = + - @ seria lida pelo Excel como fórmula: vai como texto
+Private Function TextoParaCelula(ByVal s As String) As String
+    If Len(s) > 0 Then
+        If InStr(1, "=+-@", Left$(s, 1)) > 0 Then s = "'" & s
+    End If
+    TextoParaCelula = s
+End Function
+
 Private Function FindColByHeader(ByVal ws As Worksheet, ByVal headerRow As Long, ByVal headerText As String) As Long
     ' Procura um texto de cabeçalho na linha headerRow e devolve o nº da coluna
     Dim lastCol As Long
@@ -827,6 +952,8 @@ Public Sub Import_Base_Imos_1(ByVal caminhoCSV As String)
     Tratar_Linhas_Qt_Zero wsImport
     CorrigirColunaRP wsImport
     VerificarECorrigir_Rasgo_Em_Notas wsImport
+    Dim avisoMontar As String
+    avisoMontar = Marcar_Montar_Subartigos(wsImport)
     mCopiarPorNome = True
     Criar_Lista_Ordenada wsImport, ThisWorkbook.Worksheets("DEFENICOES"), ThisWorkbook.Worksheets("LISTA_ORDENADA")
     mCopiarPorNome = False
@@ -838,6 +965,7 @@ Public Sub Import_Base_Imos_1(ByVal caminhoCSV As String)
         "Lista da base do iMos (Martelo) importada para: " & numProcesso, _
         1, "Microsoft Excel", vbInformation
     On Error GoTo EH
+    If Len(avisoMontar) > 0 Then MsgBox avisoMontar, vbInformation, TITULO_AVISO_MONTAR
 CleanExit:
     mCopiarPorNome = False
     Application.Calculation = oldCalc
