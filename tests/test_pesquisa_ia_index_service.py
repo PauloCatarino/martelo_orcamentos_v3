@@ -192,6 +192,21 @@ def test_as_copias_de_seguranca_ficam_de_fora(tmp_path, monkeypatch) -> None:
     assert resultado.ignorados == ()
 
 
+def test_as_tabelas_obsoletas_ficam_de_fora(tmp_path, monkeypatch) -> None:
+    """Um PDF substituido por uma versao nova vai para _OBSOLETO e deixa de contar."""
+    catalogos = tmp_path / "catalogos"
+    obsoleto = catalogos / "_OBSOLETO"
+    obsoleto.mkdir(parents=True)
+    _criar_pdf(catalogos / "T17_Innovus_Decorativos_2026_11_09.pdf")
+    _criar_pdf(obsoleto / "T17_Innovus_Decorativos_2025_10_08.pdf")
+    _fingir(monkeypatch, catalogos, tmp_path / "indice", esperado=1)
+
+    resultado = service_module.indexar(object())
+
+    assert resultado.ficheiros == 1
+    assert resultado.ignorados == ()
+
+
 def test_a_frase_de_um_artigo_diz_a_espessura_e_o_preco() -> None:
     """Era isto que faltava: no Excel a linha trazia dez precos e nenhum rotulo."""
     artigo = ArtigoConsulta(

@@ -63,7 +63,10 @@ EXTENSOES_IGNORADAS = (".xlsx", ".xlsm")
 #: O ``_scripts/`` são os extractores, código que ninguém quer procurar aqui. E
 #: o ``_gerado/`` é o Excel que **nós** escrevemos a partir da base: indexá-lo
 #: punha cada artigo no índice duas vezes, a segunda em segunda mão.
-PASTAS_IGNORADAS = ("_backups", "_scripts", exportador.PASTA_GERADOS)
+#: O ``_OBSOLETO/`` é onde vão as tabelas de preços que uma versão nova
+#: substituiu (regra do Paulo: o que fica velho não se apaga, muda de pasta).
+#: Indexadas, a pesquisa punha o PDF antigo ao lado do novo com o mesmo peso.
+PASTAS_IGNORADAS = ("_backups", "_scripts", "_OBSOLETO", exportador.PASTA_GERADOS)
 MODELO_EMBEDDINGS_DEFAULT = "paraphrase-multilingual-MiniLM-L12-v2"
 
 

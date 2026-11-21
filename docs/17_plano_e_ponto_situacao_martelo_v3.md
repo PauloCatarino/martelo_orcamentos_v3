@@ -4158,3 +4158,28 @@ Guião de teste:
 6. «Calculo Orlas». Esperado: as orlas antes de colar dessas peças já não contam. Há uma linha
    `..._38.MM` com a orla das Notas e os ml depois de colar.
 7. Um conjunto com «Sem orla», ou de peças sem orla. Esperado: grava sem a janela.
+
+## Pesquisa IA: tabelas B&F de novembro + quadro de preços das Matérias-Primas (2026-11-21)
+
+**Pesquisa IA (catálogos):** entraram a FI-03 Finsa (02-11), a T-17 Innovus (09-11) e a BF-82 EGGER
+(11-11) no `12_Placas_Referencias_COMPLETO.xlsx` → `martelo_catalogos` (tabelas 12, 14 e 15) →
+índice refeito. EGGER com preços iguais aos de 16-09 (só entra o Low Cost U708T); Finsa ~+2,8%;
+Innovus ~+3% e 5 referências mudaram de grupo. Na pasta da IA ficaram os PDFs novos de FI-03,
+T-17, BF-82, FI-02, T-04 e BF101; as versões antigas foram para `Pesquisa_Profunda_IA\_OBSOLETO\`,
+que o indexador passou a ignorar (`PASTAS_IGNORADAS` em `pesquisa_ia_index_service.py`).
+Scripts em `Pesquisa_Profunda_IA\_scripts\BF_PLACAS_20261121\`.
+
+**Matérias-Primas: nada foi alterado.** Quadro para o Paulo validar:
+`Tabelas Preços\Balbino Faustino\2026\ANALISE_PRECOS_MP_BF_v1_20261121.xlsx` (93 placas B&F:
+preço atual × tabela nova × desconto real das faturas B&F de 12 meses no PHC). Depois de validado
+(coluna OK = S), passa-se para a base.
+
+Guião de teste:
+
+1. Martelo → Orçamentos → **Pesquisa IA** → «Atualizar fontes» → escrever `12G`. Esperado: FINSA
+   B&F, EXITUS A, 19 mm a **10,90 €**.
+2. Escrever `U708T`. Esperado: EGGER B&F, Grupo 2, 8 mm 6,65 € e 19 mm 8,89 €.
+3. Escrever `M999`. Esperado: grupo **EVERYDAY** (já não PROMO 2).
+4. «Pesquisar catálogos (IA)» com `M999 FLW`. Esperado: só aparece o PDF `7_T17_..._2026_11_09`
+   (os de 2025 já não).
+5. Matérias-Primas → pesquisar `linho`. Esperado: PLC0035 continua 10,60 € (nada mudou sem o Paulo).
