@@ -84,11 +84,8 @@ class RespostaIAService:
                 {"role": "user", "content": prompt},
             ],
             "stream": False,
-            "options": {
-                "temperature": 0,
-                "seed": 42,
-                "num_ctx": ollama_local.contexto_para(SYSTEM, prompt),
-            },
+            "keep_alive": ollama_local.MANTER_CARREGADO,
+            "options": ollama_local.opcoes_resposta(SYSTEM, prompt),
         }
         req = ollama_local.pedido_chat(payload)
         with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:
@@ -108,16 +105,17 @@ class RespostaIAService:
                 {"role": "user", "content": prompt},
             ],
             "stream": True,
-            "options": {
-                "temperature": 0,
-                "seed": 42,
-                "num_ctx": ollama_local.contexto_para(SYSTEM, prompt),
-            },
+            "keep_alive": ollama_local.MANTER_CARREGADO,
+            "options": ollama_local.opcoes_resposta(SYSTEM, prompt),
         }
         req = ollama_local.pedido_chat(payload)
+        # Sair deste ``with`` (fim, ciclo cortado ou pesquisa nova que manda
+        # parar) fecha a ligação, e o Ollama deixa de gerar logo.
         with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:
-            yield from ollama_local.pedacos_chat(
-                resp, timeout=180, modelo=self._modelo_local
+            yield from ollama_local.sem_ciclos(
+                ollama_local.pedacos_chat(
+                    resp, timeout=180, modelo=self._modelo_local
+                )
             )
 
     def _openai(self, prompt: str) -> str:

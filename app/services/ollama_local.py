@@ -42,6 +42,59 @@ TOKENS_RESPOSTA = 1024
 CARACTERES_POR_TOKEN = 2.2
 CONTEXTOS = (8192, 16384)
 
+#: Máximo de tokens que o modelo pode ESCREVER numa resposta (~25 s na placa
+#: do Paulo, a ~30 tokens/s). Sem limite, o llama3.2 com temperatura 0 entrava
+#: às vezes num ciclo a repetir as mesmas linhas, e o Ollama deixava-o continuar
+#: até 10 × num_ctx: a 18-11-2026 um pedido escreveu 81 920 tokens em 1h03, e a
+#: 21-11 outro ia em 14 000 quando foi visto. Enquanto isso, o Ollama (que
+#: atende um pedido de cada vez) deixava a pesquisa seguinte em fila: era o
+#: «A gerar resposta IA…» que demorava minutos. Respostas boas medidas: 180 a
+#: 660 tokens.
+MAX_TOKENS_ESCRITOS = 800
+#: Quanto tempo o Ollama mantém o modelo na placa depois da última resposta.
+#: O padrão é 5 minutos; com isto a pesquisa seguinte não volta a carregar o
+#: modelo (3,1 GB na placa do Paulo).
+MANTER_CARREGADO = "30m"
+#: Uma linha (com pelo menos este número de letras) que aparece mais de
+#: ``REPETICOES_MAX`` vezes é um ciclo: corta-se a resposta aí. Com 12 letras
+#: cortava respostas boas: «- Fornecedor: MADEIRAS» repete-se de artigo para
+#: artigo (medido 21-11). Os ciclos verdadeiros repetem a linha inteira de um
+#: artigo, com referência, medidas e preço — muito mais de 40 letras.
+LINHA_MINIMA_CICLO = 40
+REPETICOES_MAX = 2
+
+
+def opcoes_resposta(*textos: str) -> dict[str, Any]:
+    """As ``options`` do ``/api/chat`` para uma resposta curta e determinística."""
+    return {
+        "temperature": 0,
+        "seed": 42,
+        "num_ctx": contexto_para(*textos),
+        "num_predict": MAX_TOKENS_ESCRITOS,
+        "repeat_penalty": 1.1,
+    }
+
+
+def sem_ciclos(pedacos: Iterator[str]) -> Iterator[str]:
+    """Deixar passar os pedaços até o modelo começar a repetir-se.
+
+    Conta as linhas completas já escritas; quando uma linha com conteúdo
+    aparece pela 3.ª vez, pára. Sair do ciclo fecha a ligação, e o Ollama
+    deixa de gerar (não fica a ocupar a placa para ninguém).
+    """
+    vistas: dict[str, int] = {}
+    pendente = ""
+    for pedaco in pedacos:
+        pendente += pedaco
+        *completas, pendente = pendente.split("\n")
+        for linha in completas:
+            chave = " ".join(linha.split()).lower()
+            if len(chave) >= LINHA_MINIMA_CICLO:
+                vistas[chave] = vistas.get(chave, 0) + 1
+                if vistas[chave] > REPETICOES_MAX:
+                    return
+        yield pedaco
+
 
 def contexto_para(*textos: str) -> int:
     """O ``num_ctx`` onde cabem o pedido inteiro e a resposta.

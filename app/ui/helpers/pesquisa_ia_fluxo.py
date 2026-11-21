@@ -243,6 +243,7 @@ class PesquisaIAFluxo:
         # de células a cada tecla. A resposta em curso deixa de ser exibida.
         self._consulta_resposta = None
         self._resposta_pendente = None
+        self.parar_resposta()
         self.resposta_text.clear()
         self._timer_filtro.start()
 
@@ -449,6 +450,7 @@ class PesquisaIAFluxo:
         if self._ultima_consulta != self.chave_consulta():
             self._ultima_consulta = self.chave_consulta()
             self._resposta_pendente = None
+            self.parar_resposta()
             self.resposta_text.clear()
             self._consulta_resposta = None
             if texto and self.isVisible():

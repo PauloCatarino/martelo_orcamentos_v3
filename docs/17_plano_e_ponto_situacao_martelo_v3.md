@@ -4195,3 +4195,48 @@ mudam. Quadro validado: `Balbino Faustino\2026\ANALISE_PRECOS_MP_BF_v1_20261121.
 6. Matérias-Primas → `PLC0035` → Editar → separador «Histórico de preços». Esperado: 10,60 € / 36%
    (EXCEL) e 10,90 € / 30% / líquido 8,01 € (FORNECEDOR, 21-11-2026, Paulo Catarino).
 7. Pesquisar `EGGER GRUPO 6`. Esperado: 19 mm 17,62 € com 25% → líquido 13,22 €; 8 mm continua 20%.
+
+## Pesquisa IA: a resposta do Ollama deixa de demorar minutos (2026-11-21, POR TESTAR)
+
+**Causa (medida no registo do Ollama, `%LOCALAPPDATA%\Ollama\server.log`):** a pesquisa nas fontes
+leva ~5 s e o modelo lê o pedido em 3–9 s; o tempo ia na ESCRITA. O `llama3.2` com temperatura 0
+entrava às vezes num ciclo e repetia as mesmas linhas, e o Ollama deixava-o continuar até
+10 × num_ctx: a 18-11 um pedido escreveu **81 920 tokens em 1h03**; a 21-11 um Martelo aberto desde
+19-11 tinha um pedido a escrever desde as 17:13 (mais de 22 000 tokens). Como o Ollama atende um
+pedido de cada vez, a pesquisa seguinte ficava em fila: o «A gerar resposta IA…» da captura do Paulo.
+As respostas normais também eram compridas (600 a 3 455 tokens, 20 s a 1m50).
+
+**O que mudou** (`app/services/ollama_local.py`, `pesquisa_ia_resposta_service.py`,
+`pesquisa_ia_page.py`, `pesquisa_ia_fluxo.py`):
+- limite de 800 tokens escritos por resposta (`num_predict`, ~25 s) e `repeat_penalty` 1.1;
+- travão de ciclos: uma linha com 40+ letras que aparece pela 3.ª vez corta a resposta e fecha a
+  ligação (o Ollama deixa de escrever). Com 12 letras cortava respostas boas («- Fornecedor: MADEIRAS»);
+- pergunta nova ou espessura mudada manda PARAR a resposta em curso (antes esperava-se que acabasse);
+  carregar outra vez em Pesquisar com a mesma pergunta já não a repete;
+- `keep_alive` 30 min: o modelo fica na placa entre pesquisas (o padrão era 5 min);
+- trechos de catálogos iguais (PDF em duplicado, ex. `7_BF107_..._20241009.pdf` e `... (1).pdf`) vão
+  uma só vez, no máximo 6;
+- o diário de bordo regista cada resposta: «Pesquisa IA — resposta | contexto … car. | 1.ª palavra … s
+  | total … s».
+
+**Medidas (PC do Paulo, Quadro P4000, `MDF%22` + 22 mm, base dev):** antes 27 s a 1m50 por resposta
+e, no pior caso, sem fim; depois **1.ª palavra 2,5 s (modelo carregado) / 9,5 s (a carregar), total
+20–29 s**. Pedido ao modelo: ~2 200–2 400 tokens (sem WoodStore na dev).
+
+**Ollama:** este PC tem a 0.40.16; a 0.40.17 já foi descarregada pelo próprio Ollama e instala-se ao
+reiniciá-lo (versão de correção; não era a causa). O modelo continua `llama3.2` — trocar é decisão do
+Paulo (`modelo_local_ia` vale para todos os PCs). **Nota:** os PDF em duplicado na pasta
+`Pesquisa_Profunda_IA` (`... (1).pdf`) não foram mexidos; quem decide é o Paulo.
+
+Guião de teste (fechar e voltar a abrir o Martelo, para ele usar o código novo):
+
+1. Orçamentos → **Pesquisa IA** → escrever `MDF 22`, escolher `22 mm`, «Responder ao pesquisar»
+   ligado → Enter. Esperado: o painel da direita mostra as secções das fontes logo, e o «COMENTÁRIO IA»
+   começa a aparecer em ~3–10 s e acaba em menos de ~30 s. Linha de estado: «Resposta gerada.»
+2. Enquanto o comentário ainda está a ser escrito, mudar a espessura para `19 mm`. Esperado: a linha de
+   estado diz «Resposta anterior interrompida: a pesquisa mudou.» e, ao premir Enter, a resposta nova
+   começa sem esperar pela antiga.
+3. Escrever `H3170` → Enter, e logo a seguir Enter outra vez. Esperado: «Já está a gerar a resposta a
+   esta pesquisa…» e uma só resposta.
+4. Botão «Reportar problema» (canto superior direito), ou o ficheiro do diário de bordo. Esperado: linhas «Pesquisa IA —
+   resposta» com a 1.ª palavra e o total em segundos.

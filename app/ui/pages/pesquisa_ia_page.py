@@ -5,6 +5,7 @@ from app.domain.pesquisa_ia_resumo import resumo_fontes, comentario_html, compar
 
 import re
 import unicodedata
+from time import monotonic
 
 from PySide6.QtCore import QObject, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QTextCursor
@@ -173,16 +174,35 @@ class _RespostaWorker(QObject):
         self._engine = SessionLocal.kw.get("bind")
 
     def run(self) -> None:
+        inicio = monotonic()
+        primeira: float | None = None
+        caracteres = 0
+        parado = False
         try:
             with Session(bind=self._engine) as session:
                 servico = RespostaIAService(session)
+                # Fechar o gerador (break) fecha a ligação ao Ollama, que
+                # deixa de escrever e fica livre para a pesquisa seguinte.
                 for pedaco in servico.gerar_stream(self._pergunta, self._contexto):
                     if QThread.currentThread().isInterruptionRequested():
+                        parado = True
                         break
+                    if primeira is None:
+                        primeira = monotonic() - inicio
+                    caracteres += len(pedaco)
                     self.pedaco.emit(pedaco)
         except Exception as exc:  # noqa: BLE001
             self.falhou.emit(str(exc))
             return
+        # Os tempos ficam no diário: é por eles que se vê, num PC qualquer, se
+        # a demora é do modelo (1.ª palavra) ou do tamanho da resposta.
+        diario_bordo.registar_acao(
+            "Pesquisa IA — resposta",
+            f"contexto {len(self._contexto)} car. | 1.ª palavra "
+            f"{primeira if primeira is not None else -1:.1f} s | total "
+            f"{monotonic() - inicio:.1f} s | resposta {caracteres} car."
+            + (" | parada (pesquisa nova)" if parado else ""),
+        )
         self.concluido.emit()
 
 
@@ -705,7 +725,14 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
             self.status_label.setText("Indique uma referência, material ou fornecedor para preparar a resposta.")
             return
         if self._resposta_thread is not None:
+            if self._consulta_resposta == self.chave_consulta():
+                self.status_label.setText("Já está a gerar a resposta a esta pesquisa…")
+                return
+            # Pergunta nova: a resposta antiga deixa de interessar. Antes
+            # esperava-se que acabasse -- e o Ollama, que só atende um pedido
+            # de cada vez, podia estar minutos a escrevê-la.
             self._resposta_pendente = self.chave_consulta()
+            self.parar_resposta()
             return
         v3 = self._v3_filtrados[:8]
         phc = self._phc_filtrados[:8]
@@ -715,7 +742,7 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         # placas de outra cor, acessorios de outra familia. Entregues ao modelo
         # em pe' de igualdade, ele respondia sobre esses.
         exatos = [resultado for resultado in self._ultimos_catalogos if resultado.exato]
-        trechos = exatos[:8]
+        trechos = trechos_diferentes(exatos)[:MAX_TRECHOS_RESPOSTA]
         if not v3 and not phc and not refs and not trechos and not self._woodstore_filtrados:
             self.status_label.setText(
                 "Sem dados - pesquise primeiro (e carregue o PHC / cat\u00e1logos)."
@@ -861,8 +888,21 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
             "Erro a gerar resposta IA — a explicação está no comentário IA."
         )
 
+    def parar_resposta(self) -> None:
+        """Mandar parar a resposta em curso (a pesquisa mudou).
+
+        O worker vê o pedido no pedaço seguinte, fecha a ligação e o Ollama
+        deixa de escrever -- fica livre para a resposta da pesquisa nova.
+        """
+        thread = getattr(self, "_resposta_thread", None)
+        if thread is not None:
+            thread.requestInterruption()
+
     def _resposta_concluida(self) -> None:
         if self._consulta_resposta != self.chave_consulta():
+            # Sem isto a linha de estado ficava em «A gerar resposta IA…» para
+            # sempre, como na captura do Paulo de 21-11.
+            self.status_label.setText("Resposta anterior interrompida: a pesquisa mudou.")
             return
         self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html(getattr(self, "_texto_llm", "") or "Sem comentário gerado."))
         self.status_label.setText("Resposta gerada.")
@@ -874,6 +914,29 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         if self._resposta_pendente == self.chave_consulta() and not self._jobs:
             self._resposta_pendente = None
             self.gerar_resposta()
+
+
+#: Trechos de catálogos que vão para o modelo. Cada um tem ~650 letras (~270
+#: tokens); o modelo lê ~600 tokens/s na placa do Paulo.
+MAX_TRECHOS_RESPOSTA = 6
+
+
+def trechos_diferentes(resultados: list) -> list:
+    """Os trechos sem os repetidos (o mesmo texto vindo de outro ficheiro).
+
+    Na pasta dos catálogos há PDF em duplicado (ex.: «…_20241009.pdf» e
+    «…_20241009 (1).pdf»): a 21-11-2026, em 8 trechos de «MDF 22», 4 eram
+    pares iguais. Iam todos para o modelo, que os lia duas vezes.
+    """
+    vistos: set[str] = set()
+    unicos = []
+    for resultado in resultados:
+        chave = " ".join(str(resultado.trecho or "").split()).lower()
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        unicos.append(resultado)
+    return unicos
 
 
 def _data_curta(valor) -> str:
