@@ -4182,4 +4182,16 @@ Guião de teste:
 3. Escrever `M999`. Esperado: grupo **EVERYDAY** (já não PROMO 2).
 4. «Pesquisar catálogos (IA)» com `M999 FLW`. Esperado: só aparece o PDF `7_T17_..._2026_11_09`
    (os de 2025 já não).
-5. Matérias-Primas → pesquisar `linho`. Esperado: PLC0035 continua 10,60 € (nada mudou sem o Paulo).
+5. Matérias-Primas → pesquisar `linho`. Esperado: PLC0035 com 10,90 € e 30% (ver a seguir).
+
+**Gravado na base real (21-11-2026, 16h03), depois de o Paulo validar o quadro:** 69 das 93
+matérias-primas mudaram (preço de tabela novo e/ou o desconto que ele escolheu); 24 já estavam
+iguais. Critério dele: com os preços a subir, NÃO aumentar muito o desconto, para o líquido dos
+orçamentos não baixar (ex. Linho Cancun 36% → 30%; grupos EGGER 20% → 25%; Innovus sem compras
+20% → 15%). Gravado pelo `DefMateriaPrimaService` como utilizador paulo: histórico com origem
+FORNECEDOR (69 linhas, uma por material) e preço anterior guardado. Os orçamentos já feitos não
+mudam. Quadro validado: `Balbino Faustino\2026\ANALISE_PRECOS_MP_BF_v1_20261121.xlsx`.
+
+6. Matérias-Primas → `PLC0035` → Editar → separador «Histórico de preços». Esperado: 10,60 € / 36%
+   (EXCEL) e 10,90 € / 30% / líquido 8,01 € (FORNECEDOR, 21-11-2026, Paulo Catarino).
+7. Pesquisar `EGGER GRUPO 6`. Esperado: 19 mm 17,62 € com 25% → líquido 13,22 €; 8 mm continua 20%.
