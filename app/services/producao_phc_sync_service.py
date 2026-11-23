@@ -28,6 +28,7 @@ from app.services.estado_producao_service import (
     _ano_norm,
     _norm_streamlit,
 )
+from app.services.producao_precos_service import tipo_encomenda
 from app.services.streamlit_sql_service import query_encomendas_cliente_final
 
 TIPO_PASTA_PHC = "Encomenda de Cliente"
@@ -109,6 +110,9 @@ def detetar_diferencas_estado_phc(
         .scalars()
         .all()
     )
+    # ``_320`` e' do Streamlit mesmo gravado como Encomenda de Cliente: aqui
+    # viraria ``320`` e apanharia o estado da encomenda PHC 320 (outra obra).
+    processos = [p for p in processos if tipo_encomenda(p) == TIPO_PASTA_PHC]
 
     if responsavel:
         alvo = responsavel.strip().casefold()
@@ -168,7 +172,7 @@ def detetar_diferencas_estado_streamlit(
     processos = (
         session.execute(
             select(Producao).where(
-                Producao.tipo_pasta == TIPO_STREAMLIT,
+                Producao.tipo_pasta.in_((TIPO_STREAMLIT, TIPO_PASTA_PHC)),
                 Producao.num_enc_phc.is_not(None),
                 Producao.ano.is_not(None),
             )
@@ -176,6 +180,8 @@ def detetar_diferencas_estado_streamlit(
         .scalars()
         .all()
     )
+    # Pelo ``_`` e nao so' pelo tipo_pasta (ver ``tipo_encomenda``).
+    processos = [p for p in processos if tipo_encomenda(p) == TIPO_STREAMLIT]
     processos = _filtrar_responsavel(processos, responsavel)
 
     anos = sorted({_ano_norm(p.ano) for p in processos if _ano_norm(p.ano)})

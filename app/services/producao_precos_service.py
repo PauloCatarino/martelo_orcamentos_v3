@@ -17,6 +17,20 @@ TIPO_STREAMLIT = "Encomenda de Cliente Final"
 TOLERANCIA = 1.0
 
 
+def tipo_encomenda(processo) -> str:
+    """De onde vem a obra: ``TIPO_PHC`` ou ``TIPO_STREAMLIT``.
+
+    O ``_`` no nº de encomenda manda sobre o ``tipo_pasta`` gravado: ``_320``
+    e' sempre Cliente Final (Streamlit), mesmo que a obra tenha sido gravada
+    por engano como ``Encomenda de Cliente``. Sem esta regra, ``_320`` virava
+    ``320`` e ia buscar a encomenda PHC 320 -- outra obra (caso de 23-11-2026:
+    o analisador diario mandava arquivar uma obra ainda em Desenho).
+    """
+    if str(getattr(processo, "num_enc_phc", "") or "").strip().startswith("_"):
+        return TIPO_STREAMLIT
+    return str(getattr(processo, "tipo_pasta", "") or "")
+
+
 def _norm_num(valor) -> str:
     digits = re.sub(r"\D", "", str(valor or ""))
     return str(int(digits)) if digits else ""
@@ -90,12 +104,12 @@ def precos_externos(session, processos) -> dict[int, float | None]:
         {
             str(processo.ano).strip()
             for processo in processos
-            if (processo.tipo_pasta or "") == TIPO_PHC
+            if tipo_encomenda(processo) == TIPO_PHC
             and str(processo.ano or "").strip()
         }
     )
     tem_streamlit = any(
-        (processo.tipo_pasta or "") == TIPO_STREAMLIT for processo in processos
+        tipo_encomenda(processo) == TIPO_STREAMLIT for processo in processos
     )
 
     phc_tot: dict[tuple[str, str], float] = {}
@@ -113,7 +127,7 @@ def precos_externos(session, processos) -> dict[int, float | None]:
 
     out: dict[int, float | None] = {}
     for processo in processos:
-        tipo = processo.tipo_pasta or ""
+        tipo = tipo_encomenda(processo)
         if tipo == TIPO_PHC:
             externo = phc_tot.get(
                 (str(processo.ano).strip(), _norm_num(processo.num_enc_phc))
@@ -145,12 +159,12 @@ def detetar_diferencas_preco(session: Session, *, responsavel=None) -> list[dict
         {
             str(processo.ano).strip()
             for processo in processos
-            if (processo.tipo_pasta or "") == TIPO_PHC
+            if tipo_encomenda(processo) == TIPO_PHC
             and str(processo.ano or "").strip()
         }
     )
     tem_streamlit = any(
-        (processo.tipo_pasta or "") == TIPO_STREAMLIT for processo in processos
+        tipo_encomenda(processo) == TIPO_STREAMLIT for processo in processos
     )
     phc_tot = _query_phc_totais(session, anos) if anos else {}
     st_tot = _query_streamlit_totais(session) if tem_streamlit else {}
@@ -159,12 +173,12 @@ def detetar_diferencas_preco(session: Session, *, responsavel=None) -> list[dict
     for processo in processos:
         externo = None
         fonte = ""
-        if (processo.tipo_pasta or "") == TIPO_PHC:
+        if tipo_encomenda(processo) == TIPO_PHC:
             externo = phc_tot.get(
                 (str(processo.ano).strip(), _norm_num(processo.num_enc_phc))
             )
             fonte = "PHC"
-        elif (processo.tipo_pasta or "") == TIPO_STREAMLIT:
+        elif tipo_encomenda(processo) == TIPO_STREAMLIT:
             externo = st_tot.get(_norm_streamlit(processo.num_enc_phc))
             fonte = "Streamlit"
 

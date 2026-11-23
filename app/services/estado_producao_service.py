@@ -192,14 +192,14 @@ def estado_producao_por_processo(
         {
             str(processo.ano).strip()
             for processo in processos
-            if (processo.tipo_pasta or "") == TIPO_PHC and str(processo.ano or "").strip()
+            if precos.tipo_encomenda(processo) == TIPO_PHC and str(processo.ano or "").strip()
         }
     )
     anos_especiais = sorted(
         {
             str(processo.ano).strip()
             for processo in processos
-            if (processo.tipo_pasta or "") == TIPO_STREAMLIT
+            if precos.tipo_encomenda(processo) == TIPO_STREAMLIT
             and str(processo.ano or "").strip()
         }
     )
@@ -210,7 +210,7 @@ def estado_producao_por_processo(
 
     resultados: list[EstadoProducaoObra] = []
     for processo in processos:
-        tipo = processo.tipo_pasta or ""
+        tipo = precos.tipo_encomenda(processo)
         if tipo == TIPO_STREAMLIT:
             chave = ("E", _ano_norm(processo.ano), _norm_streamlit(processo.num_enc_phc))
             fonte = "Streamlit _"

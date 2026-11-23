@@ -578,7 +578,14 @@ def converter_orcamento(
 
     processo = Producao(
         estado="Desenho",
-        tipo_pasta="Encomenda de Cliente",
+        # ``_320`` e' encomenda de Cliente Final (Streamlit): gravada como
+        # «Encomenda de Cliente», a pasta ia para o sitio errado e o
+        # analisador diario lia o estado da encomenda PHC 320 (23-11-2026).
+        tipo_pasta=(
+            "Encomenda de Cliente Final"
+            if str(escolhida or "").strip().startswith("_")
+            else "Encomenda de Cliente"
+        ),
         versao_obra=versao_obra,
         versao_plano=versao_plano,
         codigo_processo=codigo_processo,

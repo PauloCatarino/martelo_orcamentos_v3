@@ -330,6 +330,27 @@ def test_sem_dados_do_phc_a_obra_e_criada_na_mesma(session, sem_pastas) -> None:
     assert processo.data_inicio is None
 
 
+@pytest.mark.parametrize(
+    ("encomenda", "tipo"),
+    [
+        ("100", "Encomenda de Cliente"),
+        # Caso real 26._320_01_01_VOLHA (23-11-2026): nascia como PHC.
+        ("_320", "Encomenda de Cliente Final"),
+    ],
+)
+def test_o_sublinhado_da_o_tipo_de_pasta(session, sem_pastas, encomenda, tipo) -> None:
+    orcamento_id, versao_id = _orcamento(session, encomendas=[encomenda])
+
+    processo = converter_orcamento(
+        session,
+        orcamento_id=orcamento_id,
+        versao_id=versao_id,
+        created_by_id=None,
+    )
+
+    assert processo.tipo_pasta == tipo
+
+
 # ---- o diálogo -------------------------------------------------------------
 
 

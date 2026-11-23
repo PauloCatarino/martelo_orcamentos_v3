@@ -4240,3 +4240,35 @@ Guião de teste (fechar e voltar a abrir o Martelo, para ele usar o código novo
    esta pesquisa…» e uma só resposta.
 4. Botão «Reportar problema» (canto superior direito), ou o ficheiro do diário de bordo. Esperado: linhas «Pesquisa IA —
    resposta» com a 1.ª palavra e o total em segundos.
+
+## Obras `_` (Cliente Final) gravadas como «Encomenda de Cliente»: o analisador mandava arquivar (2026-11-23, POR TESTAR)
+
+**Caso:** `26._320_01_01_VOLHA` (obra 882 na `martelo_v3`), ainda em Desenho, apareceu no «Analisador diário
+de estados do PHC» como «Desenho → Arquivado», fonte PHC, «7 - ARQUIVADO».
+
+**Causa:** a obra nasceu no **Converter Orçamento** (orçamento 261106), que gravava SEMPRE
+`tipo_pasta = «Encomenda de Cliente»`, mesmo com a encomenda `_320`. Com esse tipo, o analisador, o Ponto
+de Situação e os preços tratavam-na como PHC: `_320` virava `320` e lia-se a **encomenda PHC 320** (outra
+obra, já arquivada). Por isso o Ponto de Situação mostrava 100% e 696,09 € — números dessa outra obra. Na
+base real é a única obra `_` com o tipo errado (as outras 105 estão como «Encomenda de Cliente Final»).
+
+**O que mudou:**
+- `producao_precos_service.tipo_encomenda(processo)`: nº que começa por `_` é sempre Cliente Final
+  (Streamlit), seja qual for o `tipo_pasta` gravado. Usado no analisador diário
+  (`producao_phc_sync_service`), no Ponto de Situação (`estado_producao_service`) e nos preços.
+- `converter_orcamento` grava «Encomenda de Cliente Final» quando a encomenda escolhida começa por `_`.
+
+**Por decidir (Paulo):** os dados da obra 882 não foram mexidos. Continua com `tipo_pasta = «Encomenda de
+Cliente»` e a pasta está em `Dep_Producao\2026\Encomenda de Cliente\_320_VOLHA\...` (as outras `_` estão em
+`Encomenda de Cliente Final\`). O código já a lê bem assim; corrigir o tipo e mudar a pasta é só arrumação.
+
+Guião de teste (fechar e voltar a abrir o Martelo):
+
+1. Produção → **Ponto de Situação** → pesquisar `_320`. Esperado: a obra `26._320_01_01_VOLHA` aparece com
+   `_320` na coluna **Enc Streamlit** (e não na Enc PHC); % Global, setores e preço vêm da encomenda `_320`
+   do Streamlit (no Streamlit está «Pendente», Stock/Preparação/Corte «Não tem») — já não 100% / 696,09 €.
+2. Abrir o **Analisador diário de estados do PHC** (o mesmo botão/aviso das 09h00). Esperado: a
+   `26._320_01_01_VOLHA` deixa de aparecer como «Desenho → Arquivado».
+3. Orçamentos → um orçamento adjudicado com encomenda `_NNN` → **Converter para Produção**. Esperado: na
+   Produção, o campo **Tipo Pasta** da obra nova diz «Encomenda de Cliente Final» e a pasta é criada em
+   `Dep_Producao\<ano>\Encomenda de Cliente Final\`.

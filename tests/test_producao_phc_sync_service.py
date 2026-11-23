@@ -267,6 +267,73 @@ def test_detetar_diferencas_estado_streamlit_so_estados_de_fora(
     assert diffs[0]["estado_phc_raw"] == "Finalizada"
 
 
+def test_obra_com_sublinhado_gravada_como_phc_le_se_no_streamlit(
+    session, monkeypatch
+) -> None:
+    """Caso real de 23-11-2026: ``26._320_01_01_VOLHA``.
+
+    Gravada por engano como «Encomenda de Cliente», o ``_320`` virava ``320``
+    e o analisador ia buscar a encomenda PHC 320 (outra obra, arquivada):
+    sugeria arquivar uma obra ainda em Desenho. O ``_`` manda: so' o
+    Streamlit fala dela.
+    """
+    import app.services.producao_phc_sync_service as service_module
+
+    session.add_all(
+        [
+            _processo(id=1, num_enc_phc="_320", estado="Desenho"),
+            _processo(id=2, num_enc_phc="320", estado="Desenho"),
+        ]
+    )
+    session.commit()
+
+    monkeypatch.setattr(
+        service_module,
+        "query_phc_estado_debug_rows",
+        lambda *_a, **_k: [
+            {"Ano": 2026, "Enc_No": "320", "Estado_PHC": "7 - ARQUIVADO"}
+        ],
+    )
+    diffs_phc = service_module.detetar_diferencas_estado_phc(session)
+    assert [d["id"] for d in diffs_phc] == [2]
+
+    vistos = []
+
+    def fake_encomendas(_s, *, ano_minimo, max_linhas=0):
+        vistos.append(ano_minimo)
+        return [
+            {"Ano": 2026, "Numero": "_320", "Status": "A editar"},
+        ]
+
+    monkeypatch.setattr(service_module, "query_encomendas_cliente_final", fake_encomendas)
+    assert service_module.detetar_diferencas_estado_streamlit(session) == []
+    assert vistos == [2026]  # a _320 entrou na pergunta ao Streamlit
+
+    def fake_finalizada(_s, *, ano_minimo, max_linhas=0):
+        return [{"Ano": 2026, "Numero": "_320", "Status": "Finalizada"}]
+
+    monkeypatch.setattr(service_module, "query_encomendas_cliente_final", fake_finalizada)
+    diffs_st = service_module.detetar_diferencas_estado_streamlit(session)
+    assert [(d["id"], d["fonte"]) for d in diffs_st] == [(1, "Streamlit")]
+
+
+def test_tipo_encomenda_o_sublinhado_manda() -> None:
+    from app.services.producao_precos_service import (
+        TIPO_PHC,
+        TIPO_STREAMLIT,
+        tipo_encomenda,
+    )
+
+    assert tipo_encomenda(_processo(id=1, num_enc_phc="_320", estado="")) == TIPO_STREAMLIT
+    assert tipo_encomenda(_processo(id=2, num_enc_phc="320", estado="")) == TIPO_PHC
+    assert (
+        tipo_encomenda(
+            _processo(id=3, num_enc_phc="_004", estado="", tipo_pasta=TIPO_STREAMLIT)
+        )
+        == TIPO_STREAMLIT
+    )
+
+
 def test_levantar_junta_as_duas_fontes_e_ordena(session, monkeypatch) -> None:
     import app.services.producao_phc_sync_service as service_module
 
