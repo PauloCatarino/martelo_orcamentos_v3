@@ -1157,6 +1157,12 @@ class OrcamentoItemCusteioLinhaService:
                 continue
 
             campos = self._campos_material_divergentes(linha, opcao)
+            # A propagação também escreve a Esp (ver
+            # _build_valueset_material_fields). Uma peça com Esp 19 e material
+            # de 30 mm (Esp MP já certa) tem de aparecer aqui, senão nunca se
+            # corrige sozinha.
+            if self._esp_desalinhada_do_material(linha, opcao):
+                campos = (*campos, "Esp")
             if not campos:
                 continue
 
@@ -6178,6 +6184,15 @@ class OrcamentoItemCusteioLinhaService:
             fields["larg"] = linha.larg
         if linha.esp is not None:
             fields["esp"] = linha.esp
+        # Um número fixo na Esp do módulo é só a espessura do material que
+        # havia quando o módulo foi guardado (ex.: «19»). Se o ValueSet deste
+        # item dá outro material com espessura (ex.: 30 mm), manda o material —
+        # senão a peça fica com 19 e o custo/orla saem errados (261166_01).
+        # Fórmulas (P, PM-1…) são estrutura e ficam como o módulo as tem.
+        if fields.get("tipo_linha") == PECA:
+            esp_material = self._espessura_material_para_esp(fields.get("esp_mp"))
+            if esp_material is not None and self._esp_e_numero_fixo(fields.get("esp")):
+                fields["esp"] = esp_material
         if linha.codigo_orlas is not None:
             fields["codigo_orlas"] = linha.codigo_orlas
         if linha.descricao_livre is not None:
@@ -6796,6 +6811,28 @@ class OrcamentoItemCusteioLinhaService:
             return None
 
         return format(valor.normalize(), "f")
+
+    @staticmethod
+    def _esp_e_numero_fixo(esp) -> bool:
+        """True when the Esp text is a plain number (not a formula like P/PM-1)."""
+        return normalizar_numero(esp) is not None
+
+    def _esp_desalinhada_do_material(self, linha, vs_linha) -> bool:
+        """A piece whose fixed Esp differs from its ValueSet material thickness.
+
+        Só peças com Esp em número fixo: uma fórmula é escolha de estrutura.
+        """
+        if linha.tipo_linha != PECA:
+            return False
+        esp_material = self._espessura_material_para_esp(
+            getattr(vs_linha, "esp_mp", None)
+        )
+        if esp_material is None:
+            return False
+        esp_atual = normalizar_numero(getattr(linha, "esp", None))
+        if esp_atual is None:
+            return False
+        return esp_atual != Decimal(esp_material)
 
     def _format_codigo_orlas(self, peca: DefPecaResumo) -> str:
         """Build the orla code (e.g. 2200) from the four orla sides."""

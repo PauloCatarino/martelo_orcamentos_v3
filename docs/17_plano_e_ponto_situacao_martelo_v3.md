@@ -4272,3 +4272,38 @@ Guião de teste (fechar e voltar a abrir o Martelo):
 3. Orçamentos → um orçamento adjudicado com encomenda `_NNN` → **Converter para Produção**. Esperado: na
    Produção, o campo **Tipo Pasta** da obra nova diz «Encomenda de Cliente Final» e a pasta é criada em
    `Dep_Producao\<ano>\Encomenda de Cliente Final\`.
+
+## Custeio: a Esp das peças passa a seguir a espessura do material do ValueSet (2026-11-23, POR TESTAR)
+
+**Caso:** orçamento `261166_01`, item RP_01. No ValueSet do orçamento as prateleiras amovíveis estão em
+`AGL MLM CINZA CLARO L166/SC 30MM` (30 mm). No custeio, a `PRAT_AMOV[2111]` das divisões «MOD 1PORTA+5PRT»
+e «MOD 2PORTA+5PRT» ficou com **Esp = 19** (e Esp real 19), embora a «Esp MP» da linha já dissesse 30. As
+costas `COSTA_ONS_0000` das mesmas divisões têm o mesmo problema: Esp 10 com material de 8 mm.
+
+**Causa:** as linhas vieram de **Importar Módulo**. O módulo guarda a Esp como estava quando foi gravado
+(«19» = a espessura do material desse orçamento antigo), e essa Esp passava por cima da espessura do material
+que o ValueSet do item dá. Depois disso nada a corrigia: o quadro de diferenças ValueSet ↔ custeio só
+comparava a «Esp MP», que estava certa.
+
+**O que mudou** (`orcamento_item_custeio_linha_service`):
+- Importar Módulo: numa **peça**, se a Esp do módulo é um **número fixo** e o material do ValueSet tem
+  espessura, fica a espessura do material. Se a Esp do módulo é uma **fórmula** (`P`, `PM-1`, …), fica a
+  fórmula, como antes.
+- Quadro «diferenças entre o ValueSet e o custeio»: uma peça com Esp em número fixo diferente da espessura
+  do material passa a aparecer, com o campo **Esp**. Ao atualizar, a Esp fica igual à do material.
+- Os dados do 261166_01 **não foram mexidos**: corrigem-se pelo quadro (passo 2 do guião).
+
+Guião de teste (fechar e voltar a abrir o Martelo):
+
+1. Orçamentos → abrir `261166_01` → separador **Items** → item **RP_01** → **Custeio**. Confirmar que a
+   `PRAT_AMOV[2111]` da divisão «MOD 1PORTA+5PRT» ainda mostra Esp 19 (é o estado antigo).
+2. Nesse item, abrir o separador **ValueSet** e voltar ao separador **Custeio** (ou, no ValueSet, carregar
+   em **Atualizar Custeio** sem linha selecionada). Esperado: aparece o aviso de diferenças; no quadro estão
+   4 linhas com o campo **Esp**: 2× `PRAT_AMOV[2111]` (19 → 30) e 2× `COSTA_ONS_0000` (10 → 8). Se as costas
+   a 10 forem de propósito, desmarcar essas duas. Carregar em atualizar.
+3. Esperado: as prateleiras ficam com **Esp 30** e **Esp real 30**, e o Custo produzido do item muda
+   (custo/orla da prateleira recalculados). A linha de estado diz «N linha(s) de custeio atualizadas…».
+4. Voltar ao ValueSet e outra vez ao Custeio. Esperado: já não aparece aviso de diferenças.
+5. Num item novo de teste, definir no ValueSet as prateleiras amovíveis em 30 mm e fazer **Importar Módulo**
+   de um módulo com prateleiras (ex.: «MOD 1PORTA+5PRT»). Esperado: a `PRAT_AMOV[...]` entra logo com
+   **Esp 30**; peças cuja Esp no módulo é fórmula (ex.: divisão com `P`) continuam com a fórmula.

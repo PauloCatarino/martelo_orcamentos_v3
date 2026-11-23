@@ -185,3 +185,51 @@ def test_aplicar_escreve_o_material_do_valueset_na_linha(
     assert linha.preco_liquido == Decimal("7.1232")
     assert linha.material_editado_localmente is False
     assert service.listar_divergencias_valueset_do_item(item.id) == []
+
+
+def test_esp_fixa_diferente_da_espessura_do_material_e_divergencia(
+    session: Session, item: OrcamentoItem
+) -> None:
+    """261166_01: Esp MP já 30 mas Esp ficou 19 (vinda do módulo)."""
+    _opcao(session, item, esp_mp=Decimal("30"), **LINHO)
+    linha = _linha_custeio(session, item, esp="19", esp_mp=Decimal("30"), **LINHO)
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    divergencias = service.listar_divergencias_valueset_do_item(item.id)
+
+    assert len(divergencias) == 1
+    assert divergencias[0].campos == ("Esp",)
+
+    service.aplicar_divergencias_valueset(
+        [(linha.id, divergencias[0].valueset_linha.id)]
+    )
+    session.refresh(linha)
+    assert linha.esp == "30"
+
+
+def test_esp_em_formula_nao_e_divergencia(
+    session: Session, item: OrcamentoItem
+) -> None:
+    _opcao(session, item, esp_mp=Decimal("30"), **LINHO)
+    _linha_custeio(session, item, esp="PM", esp_mp=Decimal("30"), **LINHO)
+
+    assert (
+        OrcamentoItemCusteioLinhaService(session).listar_divergencias_valueset_do_item(
+            item.id
+        )
+        == []
+    )
+
+
+def test_esp_igual_a_espessura_do_material_nao_e_divergencia(
+    session: Session, item: OrcamentoItem
+) -> None:
+    _opcao(session, item, esp_mp=Decimal("30"), **LINHO)
+    _linha_custeio(session, item, esp="30.0", esp_mp=Decimal("30"), **LINHO)
+
+    assert (
+        OrcamentoItemCusteioLinhaService(session).listar_divergencias_valueset_do_item(
+            item.id
+        )
+        == []
+    )

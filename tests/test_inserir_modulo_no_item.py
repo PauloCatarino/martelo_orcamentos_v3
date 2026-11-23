@@ -996,3 +996,67 @@ def test_importar_modulo_fallback_composta_com_associado_hm_recusa(session) -> N
     resultado = service.inserir_modulo_no_item(item_id, modulo.modulo.id)
     assert resultado.criadas == 1
     assert resultado.componentes == 1
+
+
+def _criar_valueset_30mm(session, item_id: int) -> None:
+    """Item ValueSet giving the laterals a 30 mm board (261166_01)."""
+    _criar_valueset_laterais(session, item_id)
+    opcao = session.query(OrcamentoItemValuesetLinha).filter_by(
+        orcamento_item_id=item_id, chave="MATERIAL_LATERAIS"
+    ).one()
+    opcao.esp_mp = Decimal("30")
+    session.flush()
+
+
+def test_importar_modulo_esp_numero_fixo_segue_espessura_do_material(session) -> None:
+    """Module saved with Esp 19; item ValueSet board is 30 mm -> Esp 30."""
+    item_id = _criar_item(session)
+    _criar_valueset_30mm(session, item_id)
+    lateral_id, gaveta_id = _criar_pecas(session)
+    modulo_id = _criar_modulo_roupeiro(session, lateral_id, gaveta_id)
+    session.commit()
+
+    OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(item_id, modulo_id)
+
+    linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
+        item_id
+    )
+    lateral = next(l for l in linhas if l.tipo_linha == "PECA")
+    assert lateral.esp_mp == Decimal("30")
+    assert lateral.esp == "30"
+
+
+def test_importar_modulo_esp_formula_fica_como_no_modulo(session) -> None:
+    """A formula in the module Esp is structure: the material does not replace it."""
+    item_id = _criar_item(session)
+    _criar_valueset_30mm(session, item_id)
+    lateral_id, _ = _criar_pecas(session)
+    modulo_id = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_FORMULA", nome="Modulo formula", user_id=7,
+            categoria="ROUPEIROS",
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod="1",
+                    descricao_livre="Corpo", comp="H", larg="L", esp="P",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="PECA", def_peca_id=lateral_id,
+                    def_peca_codigo="LATERAL", comp="H", larg="P", esp="P-480",
+                    chave_valueset="MATERIAL_LATERAIS", qt_und="1",
+                ),
+            ],
+        )
+    ).modulo.id
+    session.commit()
+
+    OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(item_id, modulo_id)
+
+    lateral = next(
+        l
+        for l in OrcamentoItemCusteioLinhaRepository(
+            session
+        ).list_active_by_orcamento_item(item_id)
+        if l.tipo_linha == "PECA"
+    )
+    assert lateral.esp == "P-480"
